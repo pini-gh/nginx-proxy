@@ -468,6 +468,8 @@ The generated nginx configuration looks like:
         ...
     }
 
+For this to work when the receiving side of the passthrough is another reverse proxy, `proxy_protocol`must be enabled in its HTTPS `listen` directive. If this is not the case, this nginx instance won't know about the target hostname and won't be able to choose the appropriate server to route the requests to.
+
 ### Contributing
 
 Before submitting pull requests or issues, please check github to make sure an existing issue or pull request is not already open.
