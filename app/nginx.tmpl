@@ -3,7 +3,11 @@
 {{ $external_http_port := coalesce $.Env.HTTP_PORT "80" }}
 {{ $external_https_port := coalesce $.Env.HTTPS_PASSTHROUGH_PORT $.Env.HTTPS_PORT "443" }}
 {{ $https_passthrough_enabled := (ne (coalesce $.Env.HTTPS_PASSTHROUGH_PORT "") "") }}
-{{ $https_proxy_protocol := when $https_passthrough_enabled "proxy_protocol" "" }}
+{{ $http_proxy_protocol_enabled := (eq (coalesce $.Env.HTTP_PROXY_PROTOCOL "false") "true") }}
+{{ $https_proxy_protocol_enabled := (or $https_passthrough_enabled (eq (coalesce $.Env.HTTPS_PROXY_PROTOCOL "false") "true")) }}
+{{ $http_proxy_protocol := when $http_proxy_protocol_enabled "proxy_protocol" "" }}
+{{ $https_proxy_protocol := when $https_proxy_protocol_enabled "proxy_protocol" "" }}
+{{ $all_real_ip_from := coalesce $.Env.REAL_IP_FROM "" }}
 
 {{ define "upstream" }}
 	{{ if .Address }}
@@ -145,9 +149,12 @@ proxy_set_header Proxy "";
 {{ $enable_ipv6 := eq (or ($.Env.ENABLE_IPV6) "") "true" }}
 server {
 	server_name _; # This is just an invalid value which will never trigger on a real hostname.
-	listen {{ $external_http_port }};
+	listen {{ $external_http_port }} {{ $http_proxy_protocol }};
 	{{ if $enable_ipv6 }}
-	listen [::]:{{ $external_http_port }};
+	listen [::]:{{ $external_http_port }} {{ $http_proxy_protocol }};
+	{{ end }}
+	{{ if $http_proxy_protocol_enabled }}
+	real_ip_header proxy_protocol;
 	{{ end }}
 	{{ $access_log }}
 	return 503;
@@ -160,8 +167,10 @@ server {
 	{{ if $enable_ipv6 }}
 	listen [::]:{{ $external_https_port }} ssl http2 {{ $https_proxy_protocol }};
 	{{ end }}
-	{{ if $https_passthrough_enabled }}
+	{{ if $https_proxy_protocol_enabled }}
+            {{ if $https_passthrough_enabled }}
 	set_real_ip_from 127.0.0.1;
+            {{ end }}
 	real_ip_header proxy_protocol;
 	{{ end }}
 	{{ $access_log }}
@@ -231,7 +240,6 @@ upstream {{ $upstream_name }} {
 {{/* Get the VIRTUAL_ROOT By containers w/ use fastcgi root */}}
 {{ $vhost_root := or (first (groupByKeys $containers "Env.VIRTUAL_ROOT")) "/var/www/public" }}
 
-
 {{/* Get the first cert name defined by containers w/ the same vhost */}}
 {{ $certName := (first (groupByKeys $containers "Env.CERT_NAME")) }}
 
@@ -252,9 +260,9 @@ upstream {{ $upstream_name }} {
 {{ if (or (eq $https_method "redirect") (eq $https_method "passthrough")) }}
 server {
 	server_name {{ $host }};
-	listen {{ $external_http_port }} {{ $default_server }};
+	listen {{ $external_http_port }} {{ $default_server }} {{ $http_proxy_protocol }};
 	{{ if $enable_ipv6 }}
-	listen [::]:{{ $external_http_port }} {{ $default_server }};
+	listen [::]:{{ $external_http_port }} {{ $default_server }} {{ $http_proxy_protocol }};
 	{{ end }}
 	{{ $access_log }}
 	
@@ -279,8 +287,16 @@ server {
 	{{ if $enable_ipv6 }}
 	listen [::]:{{ $external_https_port }} ssl http2 {{ $default_server }} {{ $https_proxy_protocol }};
 	{{ end }}
-	{{ if $https_passthrough_enabled }}
+	{{ if $https_proxy_protocol_enabled }}
+	    {{ if $https_passthrough_enabled }}
 	set_real_ip_from 127.0.0.1;
+            {{ else }}
+                {{ if (ne $all_real_ip_from "") }}
+                    {{ range $real_ip_from := split $all_real_ip_from "," }}
+        set_real_ip_from {{ $real_ip_from }};
+                    {{ end }}
+                {{ end }}
+            {{ end }}
 	real_ip_header proxy_protocol;
 	{{ end }}
 	{{ $access_log }}
@@ -351,9 +367,17 @@ server {
 
 server {
 	server_name {{ $host }};
-	listen {{ $external_http_port }} {{ $default_server }};
+	listen {{ $external_http_port }} {{ $default_server }} {{ $http_proxy_protocol }};
 	{{ if $enable_ipv6 }}
-	listen [::]:80 {{ $default_server }};
+	listen [::]:80 {{ $default_server }} {{ $http_proxy_protocol }};
+	{{ end }}
+	{{ if $http_proxy_protocol_enabled }}
+            {{ if (ne $all_real_ip_from "") }}
+                {{ range $real_ip_from := split $all_real_ip_from "," }}
+        set_real_ip_from {{ $real_ip_from }};
+                {{ end }}
+            {{ end }}
+	real_ip_header proxy_protocol;
 	{{ end }}
 	{{ $access_log }}
 
@@ -400,8 +424,16 @@ server {
 	{{ if $enable_ipv6 }}
 	listen [::]:{{ $external_https_port }} ssl http2 {{ $default_server }} {{ $https_proxy_protocol }};
 	{{ end }}
-	{{ if $https_passthrough_enabled }}
+	{{ if $https_proxy_protocol_enabled }}
+	    {{ if $https_passthrough_enabled }}
 	set_real_ip_from 127.0.0.1;
+            {{ else }}
+                {{ if (ne $all_real_ip_from "") }}
+                    {{ range $real_ip_from := split $all_real_ip_from "," }}
+        set_real_ip_from {{ $real_ip_from }};
+                    {{ end }}
+                {{ end }}
+            {{ end }}
 	real_ip_header proxy_protocol;
 	{{ end }}
 	{{ $access_log }}
