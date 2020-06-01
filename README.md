@@ -470,6 +470,22 @@ The generated nginx configuration looks like:
 
 For this to work when the receiving side of the passthrough is another reverse proxy, `proxy_protocol`must be enabled in its HTTPS `listen` directive. If this is not the case, this nginx instance won't know about the target hostname and won't be able to choose the appropriate server to route the requests to.
 
+### Proxy protocol for incoming requests
+
+Enable `proxy_protocol` for incoming requests with nginx-proxy environment variables:
+
+    HTTP_PROXY_PROTOCOL=true|false
+
+Enable proxy_protocol for incomming HTTP requests
+
+    HTTPS_PROXY_PROTOCOL=true|false
+
+Enable proxy_protocol for incomming HTTPS requests
+
+    REAL_IP_FROM=<ip>{,<ip>]...
+
+Comma separated list of IP or CIDR to configure for each vhost with 'set_real_ip_from' when HTTP or HTTPS_PROXY_PROTOCOL is enabled.
+
 ### Contributing
 
 Before submitting pull requests or issues, please check github to make sure an existing issue or pull request is not already open.
