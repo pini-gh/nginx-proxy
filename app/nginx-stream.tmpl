@@ -35,6 +35,7 @@
         listen {{ $external_https_port }};
         {{ $access_log }}
         proxy_pass $name;
+        proxy_protocol on;
         ssl_preread on;
     }
 {{ end }}
