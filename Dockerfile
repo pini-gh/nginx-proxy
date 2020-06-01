@@ -26,7 +26,7 @@ RUN wget https://github.com/jwilder/docker-gen/releases/download/$DOCKER_GEN_VER
 
 COPY network_internal.conf /etc/nginx/
 
-COPY . /app/
+COPY app /app/
 WORKDIR /app/
 
 ENV DOCKER_HOST unix:///tmp/docker.sock
