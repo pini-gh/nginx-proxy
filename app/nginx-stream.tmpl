@@ -1,0 +1,41 @@
+{{ $https_passthrough_port := coalesce $.Env.HTTPS_PASSTHROUGH_PORT "None" }}
+
+{{ if (not (eq $https_passthrough_port "None")) }}
+    {{ $access_log := (or (and (not $.Env.DISABLE_ACCESS_LOGS) "access_log /var/log/nginx/access.log vhost;") "") }}
+    log_format vhost '$ssl_preread_server_name $remote_addr [$time_local] '
+                     '"$protocol" $status $bytes_sent $bytes_received '
+                     '"$session_time"';
+
+    {{ $external_https_port := coalesce $.Env.HTTPS_PORT "443" }}
+    map $ssl_preread_server_name $name {
+    {{ range $host, $containers := groupByMulti $ "Env.VIRTUAL_HOST" "," }}
+        {{ $https_method := or (first (groupByKeys $containers "Env.HTTPS_METHOD")) "redirect" }}
+            {{ if (eq $https_method "passthrough") }}
+                {{ $host := trim $host }}
+        {{ $host }} {{ $host }}_backend;
+            {{ end }}
+    {{ end }}
+        default https_default_backend;
+    }
+    {{ range $host, $containers := groupByMulti $ "Env.VIRTUAL_HOST" "," }}
+        {{ $https_method := or (first (groupByKeys $containers "Env.HTTPS_METHOD")) "redirect" }}
+        {{ if (eq $https_method "passthrough") }}
+            {{ $host := trim $host }}
+    upstream {{ $host }}_backend {
+            {{ range $container := $containers }}
+        server {{ $container.Name }}:{{ $external_https_port }};
+            {{ end }}
+    }
+        {{ end }}
+    {{ end }}
+    upstream https_default_backend {
+        server 127.0.0.1:{{ $https_passthrough_port }};
+    }
+    server {
+        listen {{ $external_https_port }};
+        {{ $access_log }}
+        proxy_pass $name;
+        proxy_protocol on;
+        ssl_preread on;
+    }
+{{ end }}
