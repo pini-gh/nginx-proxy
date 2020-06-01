@@ -434,6 +434,89 @@ will be used on any virtual host which does not have a `/etc/nginx/vhost.d/{VIRT
 #### Per-VIRTUAL_HOST `server_tokens` configuration
 Per virtual-host `servers_tokens` directive can be configured by passing appropriate value to the `SERVER_TOKENS` environment variable. Please see the [nginx http_core module configuration](https://nginx.org/en/docs/http/ngx_http_core_module.html#server_tokens) for more details.
 
+### HTTPS passthrough
+
+The HTTPS passthrough mode enables this use case:
+
+    nginx-proxy (80)  ------> nginx (80)  --------> application (8080)
+    nginx-proxy (443) ------> nginx (443) --------> application (8080)
+
+SSL can be forwarded as is (no SSL temination) to selected vhosts. This way it is possible to have:
+* another reverse proxy as a vhost (usefull for testing purpose)
+* a vhost which needs to handle the SSL termination itself.
+
+To enable this mode, set the environment variable `HTTPS_PASSTHROUGH_PORT` to the port number to use for the fallback `https_default_backend`:
+
+    HTTPS_PASSTHROUGH_PORT=444
+
+Then in the vhost container configuration set `HTTPS_METHOD=passthrough`.
+
+The generated nginx configuration looks like:
+
+    stream {
+        log_format vhost '$ssl_preread_server_name $remote_addr [$time_local] '
+                         '"$protocol" $status $bytes_sent $bytes_received '
+                         '"$session_time"';
+        map $ssl_preread_server_name $name {
+            blah.example.com blah.example.com_backend;
+            default https_default_backend;
+        }
+        # HTTPS_METHOD=passthrough for vhost blah.example.com
+        upstream blah.example.com_backend {
+            server blah_container_name:443;
+        }
+        # default HTTPS backend for other vhosts
+        upstream https_default_backend {
+            # HTTPS_PASSTHROUGH_PORT=444
+            server 127.0.0.1:444;
+        }
+        server {
+            listen 443;
+            access_log /var/log/nginx/access.log vhost;
+            proxy_pass $name;
+            proxy_protocol on;
+            ssl_preread on;
+        }
+    }
+    
+    http {
+        ...
+        # blah.example.com
+        upstream blah.example.com {
+                                        ## Can be connected with "reverse-proxy_bridge" network
+                                # blah_container_name
+                                server 172.20.0.9:80;
+        }
+        server {
+                server_name blah.example.com;
+                listen 80 ;
+                access_log /var/log/nginx/access.log vhost;
+                include /etc/nginx/vhost.d/default;
+                location / {
+                        proxy_pass http://blah.example.com;
+                }
+        }
+        ...
+    }
+
+For this to work when the receiving side of the passthrough is another reverse proxy, `proxy_protocol`must be enabled in its HTTPS `listen` directive. If this is not the case, this nginx instance won't know about the target hostname and won't be able to choose the appropriate server to route the requests to.
+
+### Proxy protocol for incoming requests
+
+Enable `proxy_protocol` for incoming requests with nginx-proxy environment variables:
+
+    HTTP_PROXY_PROTOCOL=true|false
+
+Enable proxy_protocol for incomming HTTP requests
+
+    HTTPS_PROXY_PROTOCOL=true|false
+
+Enable proxy_protocol for incomming HTTPS requests
+
+    REAL_IP_FROM=<ip>{,<ip>]...
+
+Comma separated list of IP or CIDR to configure for each vhost with 'set_real_ip_from' when HTTP or HTTPS_PROXY_PROTOCOL is enabled.
+
 ### Troubleshooting
 
 In case you can't access your VIRTUAL_HOST, set `DEBUG=true` in the client container's environment and have a look at the generated nginx configuration file `/etc/nginx/conf.d/default`:

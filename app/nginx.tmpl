@@ -1,7 +1,13 @@
 {{ $CurrentContainer := where $ "ID" .Docker.CurrentContainerID | first }}
 
 {{ $external_http_port := coalesce $.Env.HTTP_PORT "80" }}
-{{ $external_https_port := coalesce $.Env.HTTPS_PORT "443" }}
+{{ $external_https_port := coalesce $.Env.HTTPS_PASSTHROUGH_PORT $.Env.HTTPS_PORT "443" }}
+{{ $https_passthrough_enabled := (ne (coalesce $.Env.HTTPS_PASSTHROUGH_PORT "") "") }}
+{{ $http_proxy_protocol_enabled := (eq (coalesce $.Env.HTTP_PROXY_PROTOCOL "false") "true") }}
+{{ $https_proxy_protocol_enabled := (or $https_passthrough_enabled (eq (coalesce $.Env.HTTPS_PROXY_PROTOCOL "false") "true")) }}
+{{ $http_proxy_protocol := when $http_proxy_protocol_enabled "proxy_protocol" "" }}
+{{ $https_proxy_protocol := when $https_proxy_protocol_enabled "proxy_protocol" "" }}
+{{ $all_real_ip_from := coalesce $.Env.REAL_IP_FROM "" }}
 {{ $debug_all := $.Env.DEBUG }}
 
 {{ define "ssl_policy" }}
@@ -124,9 +130,12 @@ proxy_set_header Proxy "";
 server {
 	server_name _; # This is just an invalid value which will never trigger on a real hostname.
 	server_tokens off;
-	listen {{ $external_http_port }};
+	listen {{ $external_http_port }} {{ $http_proxy_protocol }};
 	{{ if $enable_ipv6 }}
-	listen [::]:{{ $external_http_port }};
+	listen [::]:{{ $external_http_port }} {{ $http_proxy_protocol }};
+	{{ end }}
+	{{ if $http_proxy_protocol_enabled }}
+	real_ip_header proxy_protocol;
 	{{ end }}
 	{{ $access_log }}
 	return 503;
@@ -136,9 +145,15 @@ server {
 server {
 	server_name _; # This is just an invalid value which will never trigger on a real hostname.
 	server_tokens off;
-	listen {{ $external_https_port }} ssl http2;
+	listen {{ $external_https_port }} ssl http2 {{ $https_proxy_protocol }};
 	{{ if $enable_ipv6 }}
-	listen [::]:{{ $external_https_port }} ssl http2;
+	listen [::]:{{ $external_https_port }} ssl http2 {{ $https_proxy_protocol }};
+	{{ end }}
+	{{ if $https_proxy_protocol_enabled }}
+            {{ if $https_passthrough_enabled }}
+	set_real_ip_from 127.0.0.1;
+            {{ end }}
+	real_ip_header proxy_protocol;
 	{{ end }}
 	{{ $access_log }}
 	return 503;
@@ -240,7 +255,6 @@ upstream {{ $upstream_name }} {
 {{/* Get the VIRTUAL_ROOT By containers w/ use fastcgi root */}}
 {{ $vhost_root := or (first (groupByKeys $containers "Env.VIRTUAL_ROOT")) "/var/www/public" }}
 
-
 {{/* Get the first cert name defined by containers w/ the same vhost */}}
 {{ $certName := (first (groupByKeys $containers "Env.CERT_NAME")) }}
 
@@ -254,19 +268,19 @@ upstream {{ $upstream_name }} {
 {{/* Use the cert specified on the container or fallback to the best vhost match */}}
 {{ $cert := (coalesce $certName $vhostCert) }}
 
-{{ $is_https := (and (ne $https_method "nohttps") (ne $cert "") (exists (printf "/etc/nginx/certs/%s.crt" $cert)) (exists (printf "/etc/nginx/certs/%s.key" $cert))) }}
+{{ $is_https := (and (ne $https_method "nohttps") (ne $https_method "passthrough") (ne $cert "") (exists (printf "/etc/nginx/certs/%s.crt" $cert)) (exists (printf "/etc/nginx/certs/%s.key" $cert))) }}
 
 {{ if $is_https }}
 
-{{ if eq $https_method "redirect" }}
+{{ if (or (eq $https_method "redirect") (eq $https_method "passthrough")) }}
 server {
 	server_name {{ $host }};
 	{{ if $server_tokens }}
 	server_tokens {{ $server_tokens }};
 	{{ end }}
-	listen {{ $external_http_port }} {{ $default_server }};
+	listen {{ $external_http_port }} {{ $default_server }} {{ $http_proxy_protocol }};
 	{{ if $enable_ipv6 }}
-	listen [::]:{{ $external_http_port }} {{ $default_server }};
+	listen [::]:{{ $external_http_port }} {{ $default_server }} {{ $http_proxy_protocol }};
 	{{ end }}
 	{{ $access_log }}
 	
@@ -291,9 +305,21 @@ server {
 	{{ if $server_tokens }}
 	server_tokens {{ $server_tokens }};
 	{{ end }}
-	listen {{ $external_https_port }} ssl http2 {{ $default_server }};
+	listen {{ $external_https_port }} ssl http2 {{ $default_server }} {{ $https_proxy_protocol }};
 	{{ if $enable_ipv6 }}
-	listen [::]:{{ $external_https_port }} ssl http2 {{ $default_server }};
+	listen [::]:{{ $external_https_port }} ssl http2 {{ $default_server }} {{ $https_proxy_protocol }};
+	{{ end }}
+	{{ if $https_proxy_protocol_enabled }}
+	    {{ if $https_passthrough_enabled }}
+	set_real_ip_from 127.0.0.1;
+            {{ else }}
+                {{ if (ne $all_real_ip_from "") }}
+                    {{ range $real_ip_from := split $all_real_ip_from "," }}
+        set_real_ip_from {{ $real_ip_from }};
+                    {{ end }}
+                {{ end }}
+            {{ end }}
+	real_ip_header proxy_protocol;
 	{{ end }}
 	{{ $access_log }}
 
@@ -366,9 +392,17 @@ server {
 	{{ if $server_tokens }}
 	server_tokens {{ $server_tokens }};
 	{{ end }}
-	listen {{ $external_http_port }} {{ $default_server }};
+	listen {{ $external_http_port }} {{ $default_server }} {{ $http_proxy_protocol }};
 	{{ if $enable_ipv6 }}
-	listen [::]:80 {{ $default_server }};
+	listen [::]:80 {{ $default_server }} {{ $http_proxy_protocol }};
+	{{ end }}
+	{{ if $http_proxy_protocol_enabled }}
+            {{ if (ne $all_real_ip_from "") }}
+                {{ range $real_ip_from := split $all_real_ip_from "," }}
+        set_real_ip_from {{ $real_ip_from }};
+                {{ end }}
+            {{ end }}
+	real_ip_header proxy_protocol;
 	{{ end }}
 	{{ $access_log }}
 
@@ -408,15 +442,27 @@ server {
 	}
 }
 
-{{ if (and (not $is_https) (exists "/etc/nginx/certs/default.crt") (exists "/etc/nginx/certs/default.key")) }}
+{{ if (and (not $is_https) (ne $https_method "passthrough") (exists "/etc/nginx/certs/default.crt") (exists "/etc/nginx/certs/default.key")) }}
 server {
 	server_name {{ $host }};
 	{{ if $server_tokens }}
 	server_tokens {{ $server_tokens }};
 	{{ end }}
-	listen {{ $external_https_port }} ssl http2 {{ $default_server }};
+	listen {{ $external_https_port }} ssl http2 {{ $default_server }} {{ $https_proxy_protocol }};
 	{{ if $enable_ipv6 }}
-	listen [::]:{{ $external_https_port }} ssl http2 {{ $default_server }};
+	listen [::]:{{ $external_https_port }} ssl http2 {{ $default_server }} {{ $https_proxy_protocol }};
+	{{ end }}
+	{{ if $https_proxy_protocol_enabled }}
+	    {{ if $https_passthrough_enabled }}
+	set_real_ip_from 127.0.0.1;
+            {{ else }}
+                {{ if (ne $all_real_ip_from "") }}
+                    {{ range $real_ip_from := split $all_real_ip_from "," }}
+        set_real_ip_from {{ $real_ip_from }};
+                    {{ end }}
+                {{ end }}
+            {{ end }}
+	real_ip_header proxy_protocol;
 	{{ end }}
 	{{ $access_log }}
 	return 500;
@@ -424,6 +470,18 @@ server {
 	ssl_certificate /etc/nginx/certs/default.crt;
 	ssl_certificate_key /etc/nginx/certs/default.key;
 }
+{{ else }}
+	{{ if (eq $https_method "passthrough") }}
+		{{ if $https_passthrough_enabled }}
+# NOTE: HTTPS passthrough enabled
+# see /etc/nginx/nginx-stream.conf
+		{{ else }}
+# WARNING: HTTPS_METHOD=passthrough but nginx-proxy container has
+# no HTTPS_PASSTHROUGH_PORT defined. You MUST define this variable to
+# enable HTTPS passthrough
+		{{ end }}
+#
+	{{ end }}
 {{ end }}
 
 {{ end }}
