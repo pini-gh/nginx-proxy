@@ -64,7 +64,7 @@ ENV DOCKER_GEN_VERSION=${DOCKER_GEN_VERSION}
 
 COPY network_internal.conf /etc/nginx/
 
-COPY . /app/
+COPY app /app/
 WORKDIR /app/
 
 ENV DOCKER_HOST unix:///tmp/docker.sock
