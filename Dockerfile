@@ -72,3 +72,7 @@ ENV DOCKER_HOST unix:///tmp/docker.sock
 
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
 CMD ["forego", "start", "-r"]
+
+# Enable https passthrough configuration using streams
+RUN sed -E -i '/^http \{/i\stream {\n    include /etc/nginx/nginx-stream.conf;\n}\n\n' /etc/nginx/nginx.conf && \
+    touch /etc/nginx/nginx-stream.conf
