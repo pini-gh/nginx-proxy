@@ -438,12 +438,27 @@ server {
 
     {{- /*
          * Use the cert specified on the container or fallback to the best vhost
-         * match.
+         * match or "default" as a last resort.
          */}}
-    {{- $cert := (coalesce $certName $vhostCert) }}
+    {{- $cert := coalesce $certName $vhostCert "default" }}
 
-    {{- $is_https := (and (ne $https_method "nohttps") (ne $https_method "passthrough") (ne $cert "") (exists (printf "/etc/nginx/certs/%s.crt" $cert)) (exists (printf "/etc/nginx/certs/%s.key" $cert))) }}
-
+    {{- $is_https := (and (ne $https_method "nohttps") (ne $https_method "passthrough")) }}
+    {{- if $is_https }}
+        {{- /*
+             * No cert? But we do want HTTPS! Let's fallback on the nginx default one.
+             * And set up acme-challenge so that Let's Encrpyt can do its job
+             */}}
+        {{- if (and (ne $cert "default") (not (and (exists (printf "/etc/nginx/certs/%s.crt" $cert)) (exists (printf "/etc/nginx/certs/%s.key" $cert))))) }}
+            {{- $cert = "default" }}
+        {{- end }}
+        {{- /*
+             * Cert "default" selected and no cert files -> disable https
+             */}}
+        {{- if (and (eq $cert "default") (not (and (exists (printf "/etc/nginx/certs/%s.crt" $cert)) (exists (printf "/etc/nginx/certs/%s.key" $cert))))) }}
+            {{- $cert = "" }}
+            {{- $is_https = false }}
+        {{- end }}
+    {{- end }}
 
     {{- if (and $is_https (or (eq $https_method "redirect") (eq $https_method "passthrough"))) }}
 server {
@@ -483,6 +498,7 @@ server {
     server_tokens {{ $server_tokens }};
     {{- end }}
     {{ $globals.access_log }}
+
     {{- if or (not $is_https) (eq $https_method "noredirect") }}
     listen {{ $globals.external_http_port }} {{ $default_server }} {{ $globals.http_proxy_protocol }};
         {{- if $globals.enable_ipv6 }}
@@ -495,9 +511,19 @@ server {
                 {{- end }}
             {{- end }}
     real_ip_header proxy_protocol;
+        {{- end }}
 
+        {{- if (eq $https_method "noredirect") }}
+    location /.well-known/acme-challenge/ {
+        auth_basic off;
+        allow all;
+        root /usr/share/nginx/html;
+        try_files $uri =404;
+        break;
+    }
         {{- end }}
     {{- end }}
+
     {{- if $is_https }}
     listen {{ $globals.listen_https_port }} ssl http2 {{ $default_server }} {{ $globals.https_proxy_protocol }};
         {{- if $globals.enable_ipv6 }}
