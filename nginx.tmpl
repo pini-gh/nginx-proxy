@@ -788,7 +788,7 @@ server {
         {{ template "upstream" (dict "globals" $globals "Path" $path "VPath" $vpath) }}
     {{- end }}
 
-    {{- if and $vhost.cert_ok (eq $vhost.https_method "redirect") }}
+    {{- if and (or $vhost.cert_ok $globals.default_cert_ok) (eq $vhost.https_method "redirect") }}
 server {
     server_name {{ $vhost.hostname }};
         {{- if $vhost.server_tokens }}
@@ -829,7 +829,7 @@ server {
     {{- if $vhost.http2_enabled }}
     http2 on;
     {{- end }}
-    {{- if or (eq $vhost.https_method "nohttps") (not $vhost.cert_ok) (eq $vhost.https_method "noredirect") (eq $vhost.https_method "passthrough") }}
+    {{- if or (eq $vhost.https_method "nohttps") (and (not $vhost.cert_ok) (not $globals.default_cert_ok)) (eq $vhost.https_method "noredirect") (eq $vhost.https_method "passthrough") }}
     listen {{ $globals.external_http_port }} {{ $default_server }} {{ $globals.http_proxy_protocol }};
         {{- if $globals.enable_ipv6 }}
     listen [::]:{{ $globals.external_http_port }} {{ $default_server }} {{ $globals.http_proxy_protocol }};
@@ -841,6 +841,16 @@ server {
                 {{- end }}
             {{- end }}
     real_ip_header proxy_protocol;
+        {{- end }}
+
+        {{- if (eq $vhost.https_method "noredirect") }}
+    location /.well-known/acme-challenge/ {
+        auth_basic off;
+        allow all;
+        root /usr/share/nginx/html;
+        try_files $uri =404;
+        break;
+    }
         {{- end }}
     {{- end }}
     {{- if and (ne $vhost.https_method "nohttps") (ne $vhost.https_method "passthrough") }}
