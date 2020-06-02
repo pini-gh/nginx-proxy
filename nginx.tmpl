@@ -704,7 +704,7 @@ server {
     {{- /* Get the VIRTUAL_ROOT By containers w/ use fastcgi root */}}
     {{- $vhost_root := or (first (groupByKeys $containers "Env.VIRTUAL_ROOT")) "/var/www/public" }}
 
-    {{- if and $cert_ok (eq $https_method "redirect") }}
+    {{- if and (or $cert_ok $globals.default_cert_ok) (eq $https_method "redirect") }}
 server {
     server_name {{ $host }};
         {{- if $server_tokens }}
@@ -745,7 +745,7 @@ server {
     {{- if $http2 }}
     http2 on;
     {{- end }}
-    {{- if or (eq $https_method "nohttps") (not $cert_ok) (eq $https_method "noredirect") (eq $https_method "passthrough") }}
+    {{- if or (eq $https_method "nohttps") (and (not $cert_ok) (not $globals.default_cert_ok)) (eq $https_method "noredirect") (eq $https_method "passthrough") }}
     listen {{ $globals.external_http_port }} {{ $default_server }} {{ $globals.http_proxy_protocol }};
         {{- if $globals.enable_ipv6 }}
     listen [::]:{{ $globals.external_http_port }} {{ $default_server }} {{ $globals.http_proxy_protocol }};
@@ -757,6 +757,16 @@ server {
                 {{- end }}
             {{- end }}
     real_ip_header proxy_protocol;
+        {{- end }}
+
+        {{- if (eq $https_method "noredirect") }}
+    location /.well-known/acme-challenge/ {
+        auth_basic off;
+        allow all;
+        root /usr/share/nginx/html;
+        try_files $uri =404;
+        break;
+    }
         {{- end }}
     {{- end }}
     {{- if and (ne $https_method "nohttps") (ne $https_method "passthrough") }}
