@@ -470,12 +470,14 @@ server {
              * And set up acme-challenge so that Let's Encrpyt can do its job
              */}}
         {{- if (and (ne $cert "default") (not (and (exists (printf "/etc/nginx/certs/%s.crt" $cert)) (exists (printf "/etc/nginx/certs/%s.key" $cert))))) }}
+# WARNING: Certificate '{{ $cert }}' doesn't exist yet - Falling back on 'default'
             {{- $cert = "default" }}
         {{- end }}
         {{- /*
              * Cert "default" selected and no cert files -> disable https
              */}}
         {{- if (and (eq $cert "default") (not (and (exists (printf "/etc/nginx/certs/%s.crt" $cert)) (exists (printf "/etc/nginx/certs/%s.key" $cert))))) }}
+# WARNING: Certificate '{{ $cert }}' not found. Disabling https
             {{- $cert = "" }}
             {{- $is_https = false }}
         {{- end }}
