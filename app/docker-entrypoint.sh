@@ -118,4 +118,8 @@ if [[ $* == 'forego start -r' ]]; then
 	fi
 fi
 
+# Force initial docker-gen run to prevent using a broken nginx configuration (e.g. in case of missing certificates)
+echo "Info: initial docker-gen run"
+docker-gen /app/nginx.tmpl /etc/nginx/conf.d/default.conf
+
 exec "$@"
