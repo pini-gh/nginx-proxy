@@ -36,4 +36,9 @@ if [ "$socketMissing" = 1 ] && [ "$1" = forego ] && [ "$2" = start ] && [ "$3" =
 	exit 1
 fi
 
+# Force initial docker-gen run to prevent using a broken nginx configuration (e.g. in case of missing certificates)
+echo "Info: initial docker-gen run"
+docker-gen /app/nginx.tmpl /etc/nginx/conf.d/default.conf
+docker-gen /app/nginx-stream.tmpl /etc/nginx/nginx-stream.conf
+
 exec "$@"
