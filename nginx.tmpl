@@ -571,7 +571,7 @@ server {
     {{- /* Get the VIRTUAL_ROOT By containers w/ use fastcgi root */}}
     {{- $vhost_root := or (first (groupByKeys $containers "Env.VIRTUAL_ROOT")) "/var/www/public" }}
 
-    {{- if and $cert_ok (eq $https_method "redirect") }}
+    {{- if and (or $cert_ok $globals.default_cert_ok) (eq $https_method "redirect") }}
 server {
     server_name {{ $host }};
         {{- if $server_tokens }}

@@ -52,6 +52,23 @@ function _check_unix_socket() {
 	fi
 }
 
+function _default_certificate() {
+	# Gracefully return if certs folder doesn't exist or is readonly
+	[ -d /etc/nginx/certs ] || return 0
+	touch /etc/nginx/certs/.foo && rm /etc/nginx/certs/.foo || return 0
+	# Generate default certificate if not present
+	if [[ ! -e /etc/nginx/certs/default.crt || ! -e /etc/nginx/certs/default.key ]]; then
+	    openssl req -x509 \
+	        -newkey rsa:4096 -sha256 -nodes -days 365 \
+	        -subj "/CN=nginx-proxy" \
+	        -keyout /etc/nginx/certs/default.key.new \
+	        -out /etc/nginx/certs/default.crt.new \
+	    && mv /etc/nginx/certs/default.key.new /etc/nginx/certs/default.key \
+	    && mv /etc/nginx/certs/default.crt.new /etc/nginx/certs/default.crt \
+	    && echo "Info: a default key and certificate have been created at /etc/nginx/certs/default.key and /etc/nginx/certs/default.crt."
+	fi
+}
+
 function _resolvers() {
 	# Compute the DNS resolvers for use in the templates - if the IP contains ":", it's IPv6 and must be enclosed in []
 	RESOLVERS=$(awk '$1 == "nameserver" {print ($2 ~ ":")? "["$2"]": $2}' ORS=' ' /etc/resolv.conf | sed 's/ *$//g'); export RESOLVERS
@@ -105,6 +122,8 @@ if [[ $* == 'forego start -r' ]]; then
 	_print_version
 	
 	_check_unix_socket
+
+	_default_certificate
 
 	_resolvers
 
