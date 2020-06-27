@@ -44,7 +44,7 @@ CONNECTION_REFUSED_RE = re.compile("Connection refused")
     ("withdefault.yml", "https://https-only.nginx-proxy.test/", 200, None),
     ("withdefault.yml", "http://http-only.nginx-proxy.test/", 200, None),
     ("withdefault.yml", "https://http-only.nginx-proxy.test/", 503, None),
-    ("withdefault.yml", "http://missing-cert.nginx-proxy.test/", 200, None),
+    ("withdefault.yml", "http://missing-cert.nginx-proxy.test/", 301, None),
     ("withdefault.yml", "https://missing-cert.nginx-proxy.test/", 500, None),
     ("withdefault.yml", "http://unknown.nginx-proxy.test/", 503, None),
     ("withdefault.yml", "https://unknown.nginx-proxy.test/", 503, None),
