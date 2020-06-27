@@ -17,6 +17,18 @@ fi
 # Generate dhparam file if required
 /app/generate-dhparam.sh
 
+# Generate default certificate if not present
+if [[ ! -e /etc/nginx/certs/default.crt || ! -e /etc/nginx/certs/default.key ]]; then
+    openssl req -x509 \
+        -newkey rsa:4096 -sha256 -nodes -days 365 \
+        -subj "/CN=nginx-proxy" \
+        -keyout /etc/nginx/certs/default.key.new \
+        -out /etc/nginx/certs/default.crt.new \
+    && mv /etc/nginx/certs/default.key.new /etc/nginx/certs/default.key \
+    && mv /etc/nginx/certs/default.crt.new /etc/nginx/certs/default.crt
+    echo "Info: a default key and certificate have been created at /etc/nginx/certs/default.key and /etc/nginx/certs/default.crt."
+fi
+
 # Compute the DNS resolvers for use in the templates - if the IP contains ":", it's IPv6 and must be enclosed in []
 RESOLVERS=$(awk '$1 == "nameserver" {print ($2 ~ ":")? "["$2"]": $2}' ORS=' ' /etc/resolv.conf | sed 's/ *$//g'); export RESOLVERS
 
