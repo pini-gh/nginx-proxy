@@ -486,6 +486,40 @@ Enable proxy_protocol for incomming HTTPS requests
 
 Comma separated list of IP or CIDR to configure for each vhost with 'set_real_ip_from' when HTTP or HTTPS_PROXY_PROTOCOL is enabled.
 
+### Troubleshooting
+
+In case you can't access your VIRTUAL_HOST, have a look at the generated nginx configuration file `/etc/nginx/conf.d/default`:
+
+```
+$ docker exec <nginx-proxy-instance> cat /etc/nginx/conf.d/default
+```
+Especially at `upstream` definition blocks which should look like:
+
+```
+# foo.example.com
+upstream foo.example.com {
+                                ## Can be connected with "my_network" network
+                        # foo
+                        server <IP>:<VIRTUAL_PORT>;
+}
+```
+
+If the reported `VIRTUAL_PORT` is not what you expect, maybe it's because the port you designated isn't correctly exposed by your client container. If it exposes only one port, this port will be binded whatever you'll have set `VIRTUAL_PORT` with. If several ports are exposed, the `VIRTUAL_PORT` have to be one of them or the host will be reported down.
+
+To find out what the problem could be, set the `DEBUG=true` in the client container's environment, and the corresponding `upstream` block will show the exposed ports and the `VIRTUAL_PORT` value:
+
+```
+# foo.example.com
+upstream foo.example.com {
+                                ## Can be connected with "reverse-proxy_bridge" network
+                                # Exposed ports: [{   443  tcp } {   80  tcp }]
+                                # VIRTUAL_PORT: 9980
+                        # foo
+                        server 172.19.0.7 down;
+}
+```
+The above example shows that the client host is reported down because the chosen `VIRTUAL_PORT` isn't one of the exposed ports.
+
 ### Contributing
 
 Before submitting pull requests or issues, please check github to make sure an existing issue or pull request is not already open.
