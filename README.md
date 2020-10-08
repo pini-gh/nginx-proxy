@@ -10,7 +10,7 @@ See [Automated Nginx Reverse Proxy for Docker][2] for why you might want to use 
 
 To run it:
 
-    $ docker run -d -p 80:80 -v /var/run/docker.sock:/tmp/docker.sock:ro jwilder/nginx-proxy
+    $ docker run -d -p 80:80 -v /var/run/docker.sock:/tmp/docker.sock:ro pinidh/nginx-proxy
 
 Then start any containers you want proxied with an env var `VIRTUAL_HOST=subdomain.youdomain.com`
 
@@ -24,17 +24,17 @@ Provided your DNS is setup to forward foo.bar.com to the host running nginx-prox
 
 The nginx-proxy images are available in two flavors.
 
-#### jwilder/nginx-proxy:latest
+#### pinidh/nginx-proxy:<version>
 
-This image uses the debian:jessie based nginx image.
+This image uses the debian based nginx image.
 
-    $ docker pull jwilder/nginx-proxy:latest
+    $ docker pull pinidh/nginx-proxy:latest
 
-#### jwilder/nginx-proxy:alpine
+#### pinidh/nginx-proxy:alpine-<version>
 
 This image is based on the nginx:alpine image. Use this image to fully support HTTP/2 (including ALPN required by recent Chrome versions). A valid certificate is required as well (see eg. below "SSL Support using letsencrypt" for more info).
 
-    $ docker pull jwilder/nginx-proxy:alpine
+    $ docker pull pinidh/nginx-proxy:alpine
 
 ### Docker Compose
 
@@ -43,7 +43,7 @@ version: '2'
 
 services:
   nginx-proxy:
-    image: jwilder/nginx-proxy
+    image: pinidh/nginx-proxy
     ports:
       - "80:80"
     volumes:
@@ -65,7 +65,7 @@ I'm 5b129ab83266
 
 You can activate the IPv6 support for the nginx-proxy container by passing the value `true` to the `ENABLE_IPV6` environment variable:
 
-    $ docker run -d -p 80:80 -e ENABLE_IPV6=true -v /var/run/docker.sock:/tmp/docker.sock:ro jwilder/nginx-proxy
+    $ docker run -d -p 80:80 -e ENABLE_IPV6=true -v /var/run/docker.sock:/tmp/docker.sock:ro pinidh/nginx-proxy
 
 ### Multiple Ports
 
@@ -90,7 +90,7 @@ If you want your `nginx-proxy` container to be attached to a different network, 
 
 ```console
 $ docker run -d -p 80:80 -v /var/run/docker.sock:/tmp/docker.sock:ro \
-    --name my-nginx-proxy --net my-network jwilder/nginx-proxy
+    --name my-nginx-proxy --net my-network pinidh/nginx-proxy
 $ docker network connect my-other-network my-nginx-proxy
 ```
 
@@ -142,7 +142,7 @@ If you use fastcgi,you can set `VIRTUAL_ROOT=xxx`  for your root directory
 
 To set the default host for nginx use the env var `DEFAULT_HOST=foo.bar.com` for example
 
-    $ docker run -d -p 80:80 -e DEFAULT_HOST=foo.bar.com -v /var/run/docker.sock:/tmp/docker.sock:ro jwilder/nginx-proxy
+    $ docker run -d -p 80:80 -e DEFAULT_HOST=foo.bar.com -v /var/run/docker.sock:/tmp/docker.sock:ro pinidh/nginx-proxy
 
 
 ### Separate Containers
@@ -160,7 +160,7 @@ $ curl -H "Host: whoami.local" localhost
 I'm 5b129ab83266
 ```
 
-To run nginx proxy as a separate container you'll need to have [nginx.tmpl](https://github.com/jwilder/nginx-proxy/blob/master/nginx.tmpl) on your host system.
+To run nginx proxy as a separate container you'll need to have [nginx.tmpl](https://github.com/pinidh/nginx-proxy/blob/master/nginx.tmpl) on your host system.
 
 First start nginx with a volume:
 
@@ -194,7 +194,7 @@ certificates or optionally specifying a cert name (for SNI) as an environment va
 
 To enable SSL:
 
-    $ docker run -d -p 80:80 -p 443:443 -v /path/to/certs:/etc/nginx/certs -v /var/run/docker.sock:/tmp/docker.sock:ro jwilder/nginx-proxy
+    $ docker run -d -p 80:80 -p 443:443 -v /path/to/certs:/etc/nginx/certs -v /var/run/docker.sock:/tmp/docker.sock:ro pinidh/nginx-proxy
 
 The contents of `/path/to/certs` should contain the certificates and private keys for any virtual
 hosts in use.  The certificate and keys should be named after the virtual host with a `.crt` and
@@ -309,7 +309,7 @@ $ docker run -d -p 80:80 -p 443:443 \
     -v /path/to/htpasswd:/etc/nginx/htpasswd \
     -v /path/to/certs:/etc/nginx/certs \
     -v /var/run/docker.sock:/tmp/docker.sock:ro \
-    jwilder/nginx-proxy
+    pinidh/nginx-proxy
 ```
 
 You'll need apache2-utils on the machine where you plan to create the htpasswd file. Follow these [instructions](http://httpd.apache.org/docs/2.2/programs/htpasswd.html)
@@ -351,7 +351,7 @@ To add settings on a proxy-wide basis, add your configuration file under `/etc/n
 This can be done in a derived image by creating the file in a `RUN` command or by `COPY`ing the file into `conf.d`:
 
 ```Dockerfile
-FROM jwilder/nginx-proxy
+FROM pinidh/nginx-proxy
 RUN { \
       echo 'server_tokens off;'; \
       echo 'client_max_body_size 100m;'; \
@@ -360,7 +360,7 @@ RUN { \
 
 Or it can be done by mounting in your custom configuration in your `docker run` command:
 
-    $ docker run -d -p 80:80 -p 443:443 -v /path/to/my_proxy.conf:/etc/nginx/conf.d/my_proxy.conf:ro -v /var/run/docker.sock:/tmp/docker.sock:ro jwilder/nginx-proxy
+    $ docker run -d -p 80:80 -p 443:443 -v /path/to/my_proxy.conf:/etc/nginx/conf.d/my_proxy.conf:ro -v /var/run/docker.sock:/tmp/docker.sock:ro pinidh/nginx-proxy
 
 #### Per-VIRTUAL_HOST
 
@@ -370,7 +370,7 @@ In order to allow virtual hosts to be dynamically configured as backends are add
 
 For example, if you have a virtual host named `app.example.com`, you could provide a custom configuration for that host as follows:
 
-    $ docker run -d -p 80:80 -p 443:443 -v /path/to/vhost.d:/etc/nginx/vhost.d:ro -v /var/run/docker.sock:/tmp/docker.sock:ro jwilder/nginx-proxy
+    $ docker run -d -p 80:80 -p 443:443 -v /path/to/vhost.d:/etc/nginx/vhost.d:ro -v /var/run/docker.sock:/tmp/docker.sock:ro pinidh/nginx-proxy
     $ { echo 'server_tokens off;'; echo 'client_max_body_size 100m;'; } > /path/to/vhost.d/app.example.com
 
 If you are using multiple hostnames for a single container (e.g. `VIRTUAL_HOST=example.com,www.example.com`), the virtual host configuration file must exist for each hostname. If you would like to use the same configuration for multiple virtual host names, you can use a symlink:
@@ -390,7 +390,7 @@ just like the previous section except with the suffix `_location`.
 
 For example, if you have a virtual host named `app.example.com` and you have configured a proxy_cache `my-cache` in another custom file, you could tell it to use a proxy cache as follows:
 
-    $ docker run -d -p 80:80 -p 443:443 -v /path/to/vhost.d:/etc/nginx/vhost.d:ro -v /var/run/docker.sock:/tmp/docker.sock:ro jwilder/nginx-proxy
+    $ docker run -d -p 80:80 -p 443:443 -v /path/to/vhost.d:/etc/nginx/vhost.d:ro -v /var/run/docker.sock:/tmp/docker.sock:ro pinidh/nginx-proxy
     $ { echo 'proxy_cache my-cache;'; echo 'proxy_cache_valid  200 302  60m;'; echo 'proxy_cache_valid  404 1m;' } > /path/to/vhost.d/app.example.com_location
 
 If you are using multiple hostnames for a single container (e.g. `VIRTUAL_HOST=example.com,www.example.com`), the virtual host configuration file must exist for each hostname. If you would like to use the same configuration for multiple virtual host names, you can use a symlink:
@@ -492,15 +492,15 @@ Before submitting pull requests or issues, please check github to make sure an e
 
 #### Running Tests Locally
 
-To run tests, you need to prepare the docker image to test which must be tagged `jwilder/nginx-proxy:test`:
+To run tests, you need to prepare the docker image to test which must be tagged `pinidh/nginx-proxy:test`:
 
-    docker build -t jwilder/nginx-proxy:test .  # build the Debian variant image
+    docker build -t pinidh/nginx-proxy:test .  # build the Debian variant image
 
 and call the [test/pytest.sh](test/pytest.sh) script.
 
 Then build the Alpine variant of the image:
 
-    docker build -f Dockerfile.alpine -t jwilder/nginx-proxy:test .  # build the Alpline variant image
+    docker build -f Dockerfile.alpine -t pinidh/nginx-proxy:test .  # build the Alpline variant image
 
 and call the [test/pytest.sh](test/pytest.sh) script again.
 
