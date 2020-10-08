@@ -39,7 +39,7 @@ docker run --detach \
     --publish 80:80 \
     --env DEFAULT_HOST=foo.bar.com \
     --volume /var/run/docker.sock:/tmp/docker.sock:ro \
-    nginxproxy/nginx-proxy
+    pinidh/nginx-proxy
 ```
 
 nginx-proxy will then redirect all requests to a container where `VIRTUAL_HOST` is set to `DEFAULT_HOST`, if they don't match any (other) `VIRTUAL_HOST`. Using the example above requests without matching `VIRTUAL_HOST` will be redirected to a plain nginx instance after running the following command:
@@ -307,7 +307,7 @@ docker run --detach \
     --env HTTP_PORT=1080 \
     --env HTTPS_PORT=10443 \
     --volume /var/run/docker.sock:/tmp/docker.sock:ro \
-    nginxproxy/nginx-proxy
+    pinidh/nginx-proxy
 ```
 
 ### Multiple Networks
@@ -322,7 +322,7 @@ docker run --detach \
     --publish 80:80 \
     --volume /var/run/docker.sock:/tmp/docker.sock:ro \
     --net my-network \
-    nginxproxy/nginx-proxy
+    nidhnginxproxy/nginx-proxy
 docker network connect my-other-network my-nginx-proxy
 ```
 
@@ -391,7 +391,7 @@ Docker Compose example:
 ```yaml
 services:
   nginx-proxy:
-    image: nginxproxy/nginx-proxy
+    image: pinidh/nginx-proxy
     ports:
       - "80:80"
     volumes:
@@ -432,7 +432,7 @@ docker run --detach \
     --volume /path/to/htpasswd:/etc/nginx/htpasswd \
     --volume /path/to/certs:/etc/nginx/certs \
     --volume /var/run/docker.sock:/tmp/docker.sock:ro \
-    nginxproxy/nginx-proxy
+    pinidh/nginx-proxy
 ```
 
 If you want to define basic authentication for a `VIRTUAL_PATH`, you have to create a file named as `/etc/nginx/htpasswd/${VIRTUAL_HOST}_${VIRTUAL_PATH_SHA1}`
@@ -530,7 +530,7 @@ docker run --detach \
     --publish 80:80 \
     --env NO_COLOR=1 \
     --volume /var/run/docker.sock:/tmp/docker.sock:ro \
-    nginxproxy/nginx-proxy
+    pinidh/nginx-proxy
 ```
 
 ⬆️ [back to table of contents](#table-of-contents)
@@ -547,7 +547,7 @@ docker run --detach \
     --publish 443:443 \
     --volume /path/to/certs:/etc/nginx/certs \
     --volume /var/run/docker.sock:/tmp/docker.sock:ro \
-    nginxproxy/nginx-proxy
+    pinidh/nginx-proxy
 ```
 
 The contents of `/path/to/certs` should contain the certificates and private keys for any virtual hosts in use. The certificate and keys should be named after the virtual host with a `.crt` and `.key` extension. For example, a container with `VIRTUAL_HOST=foo.bar.com` should have a `foo.bar.com.crt` and `foo.bar.com.key` file in the certs directory.
@@ -799,7 +799,7 @@ docker run --detach \
     --publish 80:80 \
     --env ENABLE_IPV6=true \
     --volume /var/run/docker.sock:/tmp/docker.sock:ro \
-    nginxproxy/nginx-proxy
+    pinidh/nginx-proxy
 ```
 
 ### Scoped IPv6 Resolvers
@@ -837,7 +837,7 @@ docker run --detach \
     --publish 443:443/tcp \
     --publish 443:443/udp \
     --volume /var/run/docker.sock:/tmp/docker.sock:ro \
-    nginxproxy/nginx-proxy
+    pinidh/nginx-proxy
 ```
 
 HTTP/3 can be enabled either per-proxied container or globally:
@@ -909,7 +909,7 @@ To add settings on a proxy-wide basis, add your configuration file under `/etc/n
 This can be done in a derived image by creating the file in a `RUN` command or by `COPY`ing the file into `conf.d`:
 
 ```Dockerfile
-FROM nginxproxy/nginx-proxy
+FROM pinidh/nginx-proxy
 RUN { \
       echo 'server_tokens off;'; \
       echo 'client_max_body_size 100m;'; \
@@ -934,7 +934,7 @@ docker run --detach \
     --publish 443:443 \
     --volume /var/run/docker.sock:/tmp/docker.sock:ro \
     --volume /path/to/my_proxy.conf:/etc/nginx/conf.d/my_proxy.conf:ro \
-    nginxproxy/nginx-proxy
+    pinidh/nginx-proxy
 ```
 
 </details>
@@ -945,7 +945,7 @@ docker run --detach \
 ```yaml
 services:
   proxy:
-    image: nginxproxy/nginx-proxy
+    image: pinidh/nginx-proxy
     container_name: nginx-proxy
     ports:
       - "80:80"
@@ -988,7 +988,7 @@ docker run --detach \
     --publish 443:443 \
     --volume /var/run/docker.sock:/tmp/docker.sock:ro \
     --volume /path/to/custom-vhost-config.conf:/etc/nginx/vhost.d/app.example.com:ro \
-    nginxproxy/nginx-proxy
+    pinidh/nginx-proxy
 ```
 
 </details>
@@ -999,7 +999,7 @@ docker run --detach \
 ```yaml
 services:
   proxy:
-    image: nginxproxy/nginx-proxy
+    image: pinidh/nginx-proxy
     container_name: nginx-proxy
     ports:
       - "80:80"
@@ -1024,7 +1024,7 @@ docker run --detach \
     --volume /path/to/custom-vhost-config.conf:/etc/nginx/vhost.d/example.com:ro \
     --volume /path/to/custom-vhost-config.conf:/etc/nginx/vhost.d/www.example.com:ro \
     --volume /var/run/docker.sock:/tmp/docker.sock:ro \
-    nginxproxy/nginx-proxy
+    pinidh/nginx-proxy
 ```
 
 </details>
@@ -1035,7 +1035,7 @@ docker run --detach \
 ```yaml
 services:
   proxy:
-    image: nginxproxy/nginx-proxy
+    image: pinidh/nginx-proxy
     container_name: nginx-proxy
     ports:
       - "80:80"
@@ -1079,7 +1079,7 @@ docker run --detach \
     --publish 443:443 \
     --volume /var/run/docker.sock:/tmp/docker.sock:ro \
     --volume /path/to/custom-vhost-location-config.conf:/etc/nginx/vhost.d/app.example.com_location:ro \
-    nginxproxy/nginx-proxy
+    pinidh/nginx-proxy
 ```
 
 </details>
@@ -1090,7 +1090,7 @@ docker run --detach \
 ```yaml
 services:
   proxy:
-    image: nginxproxy/nginx-proxy
+    image: pinidh/nginx-proxy
     container_name: nginx-proxy
     ports:
       - "80:80"
@@ -1115,7 +1115,7 @@ docker run --detach \
     --volume /var/run/docker.sock:/tmp/docker.sock:ro \
     --volume /path/to/custom-vhost-location-config.conf:/etc/nginx/vhost.d/example.com_location:ro \
     --volume /path/to/custom-vhost-location-config.conf:/etc/nginx/vhost.d/www.example.com_location:ro \
-    nginxproxy/nginx-proxy
+    pinidh/nginx-proxy
 ```
 
 </details>
@@ -1126,7 +1126,7 @@ docker run --detach \
 ```yaml
 services:
   proxy:
-    image: nginxproxy/nginx-proxy
+    image: pinidh/nginx-proxy
     container_name: nginx-proxy
     ports:
       - "80:80"
@@ -1183,7 +1183,7 @@ docker run --detach \
     --publish 80:80 \
     --volume /var/run/docker.sock:/tmp/docker.sock:ro \
     --volume /path/to/error.html:/usr/share/nginx/html/errors/50x.html:ro \
-    nginxproxy/nginx-proxy
+    pinidh/nginx-proxy
 ```
 
 > [!NOTE]
@@ -1239,7 +1239,7 @@ docker run --detach \
     --publish 53:53:udp \
     --volume /var/run/docker.sock:/tmp/docker.sock:ro \
     --volume ./stream.conf:/etc/nginx/toplevel.conf.d/stream.conf:ro \
-    nginxproxy/nginx-proxy
+    pinidh/nginx-proxy
 ```
 
 > [!NOTE]
@@ -1346,7 +1346,7 @@ docker run --detach \
 ```yaml
 services:
   nginx-proxy:
-    image: nginxproxy/nginx-proxy
+    image: pinidh/nginx-proxy
     ports:
       - "80:80"
     volumes:
@@ -1570,7 +1570,7 @@ Querying the debug endpoint will show the global config, along with the virtual 
 ```yaml
 services:
   nginx-proxy:
-    image: nginxproxy/nginx-proxy
+    image: pinidh/nginx-proxy
     ports:
       - "80:80"
     volumes:
