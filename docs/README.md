@@ -33,7 +33,7 @@ You can also use wildcards at the beginning and the end of host name, like `*.ba
 To set the default host for nginx use the env var `DEFAULT_HOST=foo.bar.com` for example
 
 ```console
-docker run -d -p 80:80 -e DEFAULT_HOST=foo.bar.com -v /var/run/docker.sock:/tmp/docker.sock:ro nginxproxy/nginx-proxy
+docker run -d -p 80:80 -e DEFAULT_HOST=foo.bar.com -v /var/run/docker.sock:/tmp/docker.sock:ro pinidh/nginx-proxy
 ```
 
 nginx-proxy will then redirect all requests to a container where `VIRTUAL_HOST` is set to `DEFAULT_HOST`, if they don't match any (other) `VIRTUAL_HOST`. Using the example above requests without matching `VIRTUAL_HOST` will be redirected to a plain nginx instance after running the following command:
@@ -281,7 +281,7 @@ Nginx variables such as `$scheme`, `$host`, and `$request_uri` can be used. Howe
 If you want to use `nginx-proxy` with different external ports that the default ones of `80` for `HTTP` traffic and `443` for `HTTPS` traffic, you'll have to use the environment variable(s) `HTTP_PORT` and/or `HTTPS_PORT` in addition to the changes to the Docker port mapping. If you change the `HTTPS` port, the redirect for `HTTPS` traffic will also be configured to redirect to the custom port. Typical usage, here with the custom ports `1080` and `10443`:
 
 ```console
-docker run -d -p 1080:1080 -p 10443:10443 -e HTTP_PORT=1080 -e HTTPS_PORT=10443 -v /var/run/docker.sock:/tmp/docker.sock:ro nginxproxy/nginx-proxy
+docker run -d -p 1080:1080 -p 10443:10443 -e HTTP_PORT=1080 -e HTTPS_PORT=10443 -v /var/run/docker.sock:/tmp/docker.sock:ro pinidh/nginx-proxy
 ```
 
 ### Multiple Networks
@@ -292,7 +292,7 @@ If you want your `nginx-proxy` container to be attached to a different network, 
 
 ```console
 docker run -d -p 80:80 -v /var/run/docker.sock:/tmp/docker.sock:ro \
-    --name my-nginx-proxy --net my-network nginxproxy/nginx-proxy
+    --name my-nginx-proxy --net my-network pinidh/nginx-proxy
 docker network connect my-other-network my-nginx-proxy
 ```
 
@@ -362,7 +362,7 @@ Docker Compose example:
 ```yaml
 services:
   nginx-proxy:
-    image: nginxproxy/nginx-proxy
+    image: pinidh/nginx-proxy
     ports:
       - "80:80"
     volumes:
@@ -403,7 +403,7 @@ docker run -d -p 80:80 -p 443:443 \
     -v /path/to/htpasswd:/etc/nginx/htpasswd \
     -v /path/to/certs:/etc/nginx/certs \
     -v /var/run/docker.sock:/tmp/docker.sock:ro \
-    nginxproxy/nginx-proxy
+    pinidh/nginx-proxy
 ```
 
 If you want to define basic authentication for a `VIRTUAL_PATH`, you have to create a file named as `/etc/nginx/htpasswd/${VIRTUAL_HOST}_${VIRTUAL_PATH_SHA1}`
@@ -465,7 +465,7 @@ docker run --detach \
   --publish 80:80 \
   --env NO_COLOR=1 \
   --volume /var/run/docker.sock:/tmp/docker.sock:ro \
-  nginxproxy/nginx-proxy
+  pinidh/nginx-proxy
 ```
 
 ⬆️ [back to table of contents](#table-of-contents)
@@ -477,7 +477,7 @@ SSL is supported using single host, wildcard and SNI certificates using naming c
 To enable SSL:
 
 ```console
-docker run -d -p 80:80 -p 443:443 -v /path/to/certs:/etc/nginx/certs -v /var/run/docker.sock:/tmp/docker.sock:ro nginxproxy/nginx-proxy
+docker run -d -p 80:80 -p 443:443 -v /path/to/certs:/etc/nginx/certs -v /var/run/docker.sock:/tmp/docker.sock:ro pinidh/nginx-proxy
 ```
 
 The contents of `/path/to/certs` should contain the certificates and private keys for any virtual hosts in use. The certificate and keys should be named after the virtual host with a `.crt` and `.key` extension. For example, a container with `VIRTUAL_HOST=foo.bar.com` should have a `foo.bar.com.crt` and `foo.bar.com.key` file in the certs directory.
@@ -671,7 +671,7 @@ If the default certificate is also missing, nginx-proxy will configure nginx to 
 You can activate the IPv6 support for the nginx-proxy container by passing the value `true` to the `ENABLE_IPV6` environment variable:
 
 ```console
-docker run -d -p 80:80 -e ENABLE_IPV6=true -v /var/run/docker.sock:/tmp/docker.sock:ro nginxproxy/nginx-proxy
+docker run -d -p 80:80 -e ENABLE_IPV6=true -v /var/run/docker.sock:/tmp/docker.sock:ro pinidh/nginx-proxy
 ```
 
 ### Scoped IPv6 Resolvers
@@ -706,7 +706,7 @@ HTTP/3 use the QUIC protocol over UDP (unlike HTTP/1.1 and HTTP/2 which work ove
 ```console
 docker run -d -p 80:80 -p 443:443/tcp -p 443:443/udp \
     -v /var/run/docker.sock:/tmp/docker.sock:ro \
-    nginxproxy/nginx-proxy
+    pinidh/nginx-proxy
 ```
 
 HTTP/3 can be enabled either per-proxied container or globally:
@@ -777,7 +777,7 @@ To add settings on a proxy-wide basis, add your configuration file under `/etc/n
 This can be done in a derived image by creating the file in a `RUN` command or by `COPY`ing the file into `conf.d`:
 
 ```Dockerfile
-FROM nginxproxy/nginx-proxy
+FROM pinidh/nginx-proxy
 RUN { \
       echo 'server_tokens off;'; \
       echo 'client_max_body_size 100m;'; \
@@ -787,7 +787,7 @@ RUN { \
 Or it can be done by mounting in your custom configuration in your `docker run` command:
 
 ```console
-docker run -d -p 80:80 -p 443:443 -v /path/to/my_proxy.conf:/etc/nginx/conf.d/my_proxy.conf:ro -v /var/run/docker.sock:/tmp/docker.sock:ro nginxproxy/nginx-proxy
+docker run -d -p 80:80 -p 443:443 -v /path/to/my_proxy.conf:/etc/nginx/conf.d/my_proxy.conf:ro -v /var/run/docker.sock:/tmp/docker.sock:ro pinidh/nginx-proxy
 ```
 
 ### Per-VIRTUAL_HOST
@@ -799,7 +799,7 @@ In order to allow virtual hosts to be dynamically configured as backends are add
 For example, if you have a virtual host named `app.example.com`, you could provide a custom configuration for that host as follows:
 
 ```console
-docker run -d -p 80:80 -p 443:443 -v /path/to/vhost.d:/etc/nginx/vhost.d:ro -v /var/run/docker.sock:/tmp/docker.sock:ro nginxproxy/nginx-proxy
+docker run -d -p 80:80 -p 443:443 -v /path/to/vhost.d:/etc/nginx/vhost.d:ro -v /var/run/docker.sock:/tmp/docker.sock:ro pinidh/nginx-proxy
 { echo 'server_tokens off;'; echo 'client_max_body_size 100m;'; } > /path/to/vhost.d/app.example.com
 ```
 
@@ -821,7 +821,7 @@ To add settings to the "location" block on a per-`VIRTUAL_HOST` basis, add your 
 For example, if you have a virtual host named `app.example.com` and you have configured a proxy_cache `my-cache` in another custom file, you could tell it to use a proxy cache as follows:
 
 ```console
-docker run -d -p 80:80 -p 443:443 -v /path/to/vhost.d:/etc/nginx/vhost.d:ro -v /var/run/docker.sock:/tmp/docker.sock:ro nginxproxy/nginx-proxy
+docker run -d -p 80:80 -p 443:443 -v /path/to/vhost.d:/etc/nginx/vhost.d:ro -v /var/run/docker.sock:/tmp/docker.sock:ro pinidh/nginx-proxy
 { echo 'proxy_cache my-cache;'; echo 'proxy_cache_valid  200 302  60m;'; echo 'proxy_cache_valid  404 1m;' } > /path/to/vhost.d/app.example.com_location
 ```
 
@@ -983,7 +983,7 @@ version: "2"
 
 services:
   nginx-proxy:
-    image: nginxproxy/nginx-proxy
+    image: pinidh/nginx-proxy
     ports:
       - "80:80"
     volumes:
