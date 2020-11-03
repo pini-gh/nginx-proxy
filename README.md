@@ -70,16 +70,20 @@ You can activate the IPv6 support for the nginx-proxy container by passing the v
 
     $ docker run -d -p 80:80 -e ENABLE_IPV6=true -v /var/run/docker.sock:/tmp/docker.sock:ro nginxproxy/nginx-proxy
 
-### Multiple Ports
-
-If your container exposes multiple ports, nginx-proxy will default to the service running on port 80.  If you need to specify a different port, you can set a VIRTUAL_PORT env var to select a different one.  If your container only exposes one port and it has a VIRTUAL_HOST env var set, that port will be selected.
-
-  [1]: https://github.com/jwilder/docker-gen
-  [2]: http://jasonwilder.com/blog/2014/03/25/automated-nginx-reverse-proxy-for-docker/
-
 ### Multiple Hosts
 
 If you need to support multiple virtual hosts for a container, you can separate each entry with commas.  For example, `foo.bar.com,baz.bar.com,bar.com` and each host will be setup the same.
+
+### Virtual Ports
+
+When your container exposes only one port, nginx-proxy will default to this port, else to port 80.
+
+If you need to specify a different port, you can set a `VIRTUAL_PORT` env var to select a different one. This variable cannot be set to more than one port.
+
+For each host defined into `VIRTUAL_HOST`, the associated virtual port is retrieved by order of precedence:
+1. From the `VIRTUAL_PORT` environment variable
+1. From the container's exposed port if there is only one
+1. From the default port 80 when none of the above methods apply
 
 ### Wildcard Hosts
 
@@ -408,6 +412,34 @@ If you are using multiple hostnames for a single container (e.g. `VIRTUAL_HOST=e
 
 If you want most of your virtual hosts to use a default single `location` block configuration and then override on a few specific ones, add those settings to the `/etc/nginx/vhost.d/default_location` file. This file
 will be used on any virtual host which does not have a `/etc/nginx/vhost.d/{VIRTUAL_HOST}_location` file associated with it.
+
+### Troubleshooting
+
+In case you can't access your VIRTUAL_HOST, set `DEBUG=true` in the client container's environment and have a look at the generated nginx configuration file `/etc/nginx/conf.d/default`:
+
+```
+$ docker exec <nginx-proxy-instance> cat /etc/nginx/conf.d/default
+```
+Especially at `upstream` definition blocks which should look like:
+
+```
+# foo.example.com
+upstream foo.example.com {
+	## Can be connected with "my_network" network
+	# Exposed ports: [{   <exposed_port1>  tcp } {   <exposed_port2>  tcp } ...]
+	# Default virtual port: <exposed_port|80>
+	# VIRTUAL_PORT: <VIRTUAL_PORT>
+	# foo
+	server 172.18.0.9:<Port>;
+	# Fallback entry
+	server 127.0.0.1 down;
+}
+```
+
+The effective `Port` is retrieved by order of precedence:
+1. From the `VIRTUAL_PORT` environment variable
+1. From the container's exposed port if there is only one
+1. From the default port 80 when none of the above methods apply
 
 ### Contributing
 
