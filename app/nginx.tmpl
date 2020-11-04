@@ -9,6 +9,7 @@
 {{ $http_proxy_protocol := when $http_proxy_protocol_enabled "proxy_protocol" "" }}
 {{ $https_proxy_protocol := when $https_proxy_protocol_enabled "proxy_protocol" "" }}
 {{ $all_real_ip_from := coalesce $.Env.REAL_IP_FROM "" }}
+{{ $debug_all := $.Env.DEBUG }}
 
 {{ define "upstream" }}
 	{{ if .Address }}
@@ -194,7 +195,7 @@ server {
 upstream {{ $upstream_name }} {
 
 {{ range $container := $containers }}
-	{{ $debug := (eq (coalesce $container.Env.DEBUG "false") "true") }}
+	{{ $debug := (eq (coalesce $container.Env.DEBUG $debug_all "false") "true") }}
 	{{/* If only 1 port exposed, use that as a default, else 80 */}}
         {{ $defaultPort := (when (eq (len $container.Addresses) 1) (first $container.Addresses) (dict "Port" "80")).Port }}
 	{{ range $knownNetwork := $CurrentContainer.Networks }}
