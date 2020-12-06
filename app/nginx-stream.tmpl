@@ -23,7 +23,8 @@
             {{ $host := trim $host }}
     upstream {{ $host }}_backend {
             {{ range $container := $containers }}
-        server {{ $container.Name }}:{{ $external_https_port }};
+                {{ $https_port := coalesce $container.Env.HTTPS_VIRTUAL_PORT "443" }}
+        server {{ $container.Name }}:{{ $https_port }};
             {{ end }}
     }
         {{ end }}
