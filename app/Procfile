@@ -1,2 +1,2 @@
-dockergen: docker-gen -watch -notify "/app/update-config.sh" /app/nginx.tmpl /etc/nginx/conf.d/default.conf
+dockergen: docker-gen -config /app/docker-gen.conf
 nginx: nginx
