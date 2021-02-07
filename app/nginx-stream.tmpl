@@ -105,6 +105,9 @@ upstream https_default_backend {
 server {
     listen {{ $external_https_port }};
     {{ $access_log_off }}
+    {{ if (exists "/etc/nginx/vhost.d/https_passthrough_stream") }}
+    include "/etc/nginx/vhost.d/https_passthrough_stream";
+    {{ end }}
     proxy_pass $name;
     proxy_protocol on;
     ssl_preread on;
