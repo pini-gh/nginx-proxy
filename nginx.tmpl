@@ -150,11 +150,14 @@ server {
 }
 {{ end }}
 
-{{ range $host, $containers := groupByMulti $ "Env.VIRTUAL_HOST" "," }}
+{{ range $host_definition, $containers := groupByMulti $ "Env.VIRTUAL_HOST" "," }}
 
-{{ $host := trim $host }}
+{{ $host_definition_fields := split $host_definition ":" }}
+{{ $host_has_specific_port := gt (len $host_definition_fields) 1 }}
+{{ $specific_port := when $host_has_specific_port (index $host_definition_fields (when $host_has_specific_port 1 0)) "" }}
+{{ $host := trim (first $host_definition_fields) }}
 {{ $is_regexp := hasPrefix "~" $host }}
-{{ $upstream_name := (print (when $is_regexp (sha1 $host) $host) "-upstream") }}
+{{ $upstream_name := printf "%s%s%s" (when $is_regexp (sha1 $host) $host) (when $host_has_specific_port "_" "") $specific_port }}
 
 # {{ $host }}
 upstream {{ $upstream_name }} {
@@ -164,12 +167,13 @@ upstream {{ $upstream_name }} {
 	{{ $debug := (eq (coalesce $container.Env.DEBUG $debug_all "false") "true") }}
 	{{/* If only 1 port exposed, use that as a default, else 80 */}}
 	{{ $defaultPort := (when (eq (len $container.Addresses) 1) (first $container.Addresses) (dict "Port" "80")).Port }}
-	{{ $port := (coalesce $container.Env.VIRTUAL_PORT $defaultPort) }}
+	{{ $port := when $host_has_specific_port $specific_port (coalesce $container.Env.VIRTUAL_PORT $defaultPort) }}
 	{{ $address := where $container.Addresses "Port" $port | first }}
 	{{ if $debug }}
 	# Exposed ports: {{ $container.Addresses }}
 	# Default virtual port: {{ $defaultPort }}
 	# VIRTUAL_PORT: {{ $container.Env.VIRTUAL_PORT }}
+	# Host specific port: {{ $specific_port }}
 		{{ if not $address }}
 	# /!\ Virtual port not exposed
 		{{ end }}
