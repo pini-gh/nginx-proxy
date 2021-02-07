@@ -92,7 +92,13 @@ When your container exposes only one port, nginx-proxy will default to this port
 
 If you need to specify a different port, you can set a `VIRTUAL_PORT` env var to select a different one. This variable cannot be set to more than one port.
 
+If you need to specify a different port for each virtual host, use this syntax for the `VIRTUAL_HOST` variable:
+```
+VIRTUAL_HOST=host1:port1,host2:port2,...
+```
+
 For each host defined into `VIRTUAL_HOST`, the associated virtual port is retrieved by order of precedence:
+1. From the `host:port` syntax in the `VIRTUAL_HOST` definition
 1. From the `VIRTUAL_PORT` environment variable
 1. From the container's exposed port if there is only one
 1. From the default port 80 when none of the above methods apply
