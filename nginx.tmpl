@@ -87,6 +87,7 @@ location {{ .Path }} {
 
 {{ define "upstream" }}
 	{{ $networks := .Networks }}
+	{{ $specific_port := .SpecificPort }}
 	{{ $debug_all := .Debug }}
 	upstream {{ .Upstream }} {
 	{{ $server_found := "false" }}
@@ -94,12 +95,13 @@ location {{ .Path }} {
         {{ $debug := (eq (coalesce $container.Env.DEBUG $debug_all "false") "true") }}
         {{/* If only 1 port exposed, use that as a default, else 80 */}}
         {{ $defaultPort := (when (eq (len $container.Addresses) 1) (first $container.Addresses) (dict "Port" "80")).Port }}
-        {{ $port := (coalesce $container.Env.VIRTUAL_PORT $defaultPort) }}
+        {{ $port := when (ne $specific_port "") $specific_port (coalesce $container.Env.VIRTUAL_PORT $defaultPort) }}
         {{ $address := where $container.Addresses "Port" $port | first }}
         {{ if $debug }}
         # Exposed ports: {{ $container.Addresses }}
         # Default virtual port: {{ $defaultPort }}
         # VIRTUAL_PORT: {{ $container.Env.VIRTUAL_PORT }}
+        # Host specific port: {{ $specific_port }}
             {{ if not $address }}
         # /!\ Virtual port not exposed
             {{ end }}
@@ -252,24 +254,28 @@ server {
 }
 {{ end }}
 
-{{ range $host, $containers := groupByMulti $ "Env.VIRTUAL_HOST" "," }}
+{{ range $host_definition, $containers := groupByMulti $ "Env.VIRTUAL_HOST" "," }}
 
-{{ $host := trim $host }}
+{{ $host_definition := trim $host_definition }}
+{{ $host_definition_fields := split $host_definition ":" }}
+{{ $host_has_specific_port := gt (len $host_definition_fields) 1 }}
+{{ $specific_port := when $host_has_specific_port (index $host_definition_fields (when $host_has_specific_port 1 0)) "" }}
+{{ $host := trim (first $host_definition_fields) }}
 {{ $is_regexp := hasPrefix "~" $host }}
-{{ $upstream_name := when (or $is_regexp $sha1_upstream_name) (sha1 $host) $host }}
+{{ $upstream_name := printf "%s%s%s" (when (or $is_regexp $sha1_upstream_name) (sha1 $host) $host) (when $host_has_specific_port "_" "") $specific_port }}
 
 {{ $paths := groupBy $containers "Env.VIRTUAL_PATH" }}
 {{ $nPaths := len $paths }}
 
 {{ if eq $nPaths 0 }}
 	# {{ $host }}
-	{{ template "upstream" (dict "Upstream" $upstream_name "Containers" $containers "Networks" $CurrentContainer.Networks "Debug" $debug_all) }}
+	{{ template "upstream" (dict "Upstream" $upstream_name "Containers" $containers "Networks" $CurrentContainer.Networks "SpecificPort" $specific_port "Debug" $debug_all) }}
 {{ else }}
 	{{ range $path, $containers := $paths }}
 		{{ $sum := sha1 $path }}
 		{{ $upstream := printf "%s-%s" $upstream_name $sum }}
 		# {{ $host }}{{ $path }}
-		{{ template "upstream" (dict "Upstream" $upstream "Containers" $containers "Networks" $CurrentContainer.Networks "Debug" $debug_all) }}
+		{{ template "upstream" (dict "Upstream" $upstream "Containers" $containers "Networks" $CurrentContainer.Networks "SpecificPort" $specific_port "Debug" $debug_all) }}
 	{{ end }}
 {{ end }}
 
