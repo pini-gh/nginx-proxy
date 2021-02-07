@@ -30,7 +30,6 @@
 	# /!\ No IP for this network!
 		{{ end }}
 	{{ end }}
-
 {{ end }}
 
 {{ define "ssl_policy" }}
@@ -198,12 +197,12 @@ upstream {{ $upstream_name }} {
 	{{ $debug := (eq (coalesce $container.Env.DEBUG $debug_all "false") "true") }}
 	{{/* If only 1 port exposed, use that as a default, else 80 */}}
         {{ $defaultPort := (when (eq (len $container.Addresses) 1) (first $container.Addresses) (dict "Port" "80")).Port }}
+	{{ $port := (coalesce $container.Env.VIRTUAL_PORT $defaultPort) }}
+	{{ $address := where $container.Addresses "Port" $port | first }}
 	{{ range $knownNetwork := $CurrentContainer.Networks }}
 		{{ range $containerNetwork := $container.Networks }}
 			{{ if (and (ne $containerNetwork.Name "ingress") (or (eq $knownNetwork.Name $containerNetwork.Name) (eq $knownNetwork.Name "host"))) }}
 	## Can be connected with "{{ $containerNetwork.Name }}" network
-				{{ $port := (coalesce $container.Env.VIRTUAL_PORT $defaultPort) }}
-				{{ $address := where $container.Addresses "Port" $port | first }}
 				{{ if $debug }}
 	# Exposed ports: {{ $container.Addresses }}
 	# Default virtual port: {{ $defaultPort }}
