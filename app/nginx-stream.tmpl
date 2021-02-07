@@ -1,42 +1,112 @@
+{{ $CurrentContainer := where $ "ID" .Docker.CurrentContainerID | first }}
 {{ $https_passthrough_port := coalesce $.Env.HTTPS_PASSTHROUGH_PORT "None" }}
+{{ $access_log_off := (or (and ($.Env.DISABLE_ACCESS_LOGS) "access_log off;") "") }}
+{{ $debug_all := $.Env.DEBUG }}
+
+{{ define "upstream" }}
+    {{ if .Address }}
+        {{/* If we got the containers from swarm and this container's port is published to host, use host IP:PORT */}}
+        {{ if and .Container.Node.ID .Address.HostPort }}
+    # {{ .Container.Node.Name }}/{{ .Container.Name }}
+    server {{ .Container.Node.Address.IP }}:{{ .Address.HostPort }};
+            {{/* If there is no swarm node or the port is not published on host, use container's IP:PORT */}}
+        {{ else if .Network }}
+    # {{ .Container.Name }}
+    server {{ .Network.IP }}:{{ .Address.Port }};
+        {{ end }}
+    {{ else if .Network }}
+    # {{ .Container.Name }}
+        {{ if .Network.IP }}
+    server {{ .Network.IP }}:{{ .VirtualPort }};
+        {{ else }}
+    # /!\ No IP for this network!
+        {{ end }}
+    {{ end }}
+{{ end }}
+
+map $ssl_preread_server_name $log_server_name {
+    "" "stream";
+    default $ssl_preread_server_name;
+}
+
+log_format vhost
+    '$log_server_name $remote_addr [$time_local] '
+    '"$protocol" $status $bytes_sent $bytes_received '
+    '"$session_time"';
+access_log /var/log/nginx/access.log vhost;
+#
+
+{{ range $host, $containers := groupByMulti $ "Env.VIRTUAL_HOST" "," }}
+    {{ if (exists (printf "/etc/nginx/vhost.d/%s_stream" $host)) }}
+        {{ $host := trim $host }}
+        {{ $is_regexp := hasPrefix "~" $host }}
+        {{ $upstream_name := when $is_regexp (sha1 $host) $host }}
+# {{ $host }}
+upstream {{ $upstream_name }} {
+        {{ range $container := $containers }}
+            {{ $debug := (eq (coalesce $container.Env.DEBUG $debug_all "false") "true") }}
+            {{/* If only 1 port exposed, use that as a default, else 80 */}}
+            {{ $defaultPort := (when (eq (len $container.Addresses) 1) (first $container.Addresses) (dict "Port" "80")).Port }}
+            {{ $port := (coalesce $container.Env.VIRTUAL_PORT $defaultPort) }}
+            {{ $address := where $container.Addresses "Port" $port | first }}
+            {{ range $knownNetwork := $CurrentContainer.Networks }}
+                {{ range $containerNetwork := $container.Networks }}
+                    {{ if (and (ne $containerNetwork.Name "ingress") (or (eq $knownNetwork.Name $containerNetwork.Name) (eq $knownNetwork.Name "host"))) }}
+    ## Can be connected with "{{ $containerNetwork.Name }}" network
+                        {{ if $debug }}
+    # Exposed ports: {{ $container.Addresses }}
+    # Default virtual port: {{ $defaultPort }}
+    # VIRTUAL_PORT: {{ $container.Env.VIRTUAL_PORT }}
+                            {{ if not $address }}
+    # /!\ Virtual port not exposed
+                            {{ end }}
+                        {{ end }}
+                        {{ template "upstream" (dict "Container" $container "Address" $address "Network" $containerNetwork "VirtualPort" $port) }}
+                    {{ end }}
+                {{ end }}
+            {{ end }}
+            {{/* nginx-proxy/nginx-proxy#1105 */}}
+    # Fallback entry
+    server 127.0.0.1:{{ $port }} down;
+        {{ end }}
+}
+include {{ printf "/etc/nginx/vhost.d/%s_stream" $host}};
+#
+    {{ end }}
+{{ end }}
 
 {{ if (not (eq $https_passthrough_port "None")) }}
-    {{ $access_log := (or (and (not $.Env.DISABLE_ACCESS_LOGS) "access_log /var/log/nginx/access.log vhost;") "") }}
-    log_format vhost '$ssl_preread_server_name $remote_addr [$time_local] '
-                     '"$protocol" $status $bytes_sent $bytes_received '
-                     '"$session_time"';
-
     {{ $external_https_port := coalesce $.Env.HTTPS_PORT "443" }}
-    map $ssl_preread_server_name $name {
+map $ssl_preread_server_name $name {
     {{ range $host, $containers := groupByMulti $ "Env.VIRTUAL_HOST" "," }}
         {{ $https_method := or (first (groupByKeys $containers "Env.HTTPS_METHOD")) "redirect" }}
             {{ if (eq $https_method "passthrough") }}
                 {{ $host := trim $host }}
-        {{ $host }} {{ $host }}_backend;
+    {{ $host }} {{ $host }}_backend;
             {{ end }}
     {{ end }}
-        default https_default_backend;
-    }
+    default https_default_backend;
+}
     {{ range $host, $containers := groupByMulti $ "Env.VIRTUAL_HOST" "," }}
         {{ $https_method := or (first (groupByKeys $containers "Env.HTTPS_METHOD")) "redirect" }}
         {{ if (eq $https_method "passthrough") }}
             {{ $host := trim $host }}
-    upstream {{ $host }}_backend {
+upstream {{ $host }}_backend {
             {{ range $container := $containers }}
                 {{ $https_port := coalesce $container.Env.HTTPS_VIRTUAL_PORT "443" }}
-        server {{ $container.Name }}:{{ $https_port }};
+    server {{ $container.Name }}:{{ $https_port }};
             {{ end }}
-    }
+}
         {{ end }}
     {{ end }}
-    upstream https_default_backend {
-        server 127.0.0.1:{{ $https_passthrough_port }};
-    }
-    server {
-        listen {{ $external_https_port }};
-        {{ $access_log }}
-        proxy_pass $name;
-        proxy_protocol on;
-        ssl_preread on;
-    }
+upstream https_default_backend {
+    server 127.0.0.1:{{ $https_passthrough_port }};
+}
+server {
+    listen {{ $external_https_port }};
+    {{ $access_log_off }}
+    proxy_pass $name;
+    proxy_protocol on;
+    ssl_preread on;
+}
 {{ end }}
