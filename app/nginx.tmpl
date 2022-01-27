@@ -2,7 +2,8 @@
 
 {{ $host_variable_name := coalesce $.Env.HOST_VARIABLE_NAME "VIRTUAL_HOST" }}
 {{ $external_http_port := coalesce $.Env.HTTP_PORT "80" }}
-{{ $external_https_port := coalesce $.Env.HTTPS_PASSTHROUGH_PORT $.Env.HTTPS_PORT "443" }}
+{{ $external_https_port := coalesce $.Env.HTTPS_PORT "443" }}
+{{ $listen_https_port := coalesce $.Env.HTTPS_PASSTHROUGH_PORT $external_https_port }}
 {{ $https_passthrough_enabled := (ne (coalesce $.Env.HTTPS_PASSTHROUGH_PORT "") "") }}
 {{ $http_proxy_protocol_enabled := (eq (coalesce $.Env.HTTP_PROXY_PROTOCOL "false") "true") }}
 {{ $https_proxy_protocol_enabled := (or $https_passthrough_enabled (eq (coalesce $.Env.HTTPS_PROXY_PROTOCOL "false") "true")) }}
@@ -147,9 +148,9 @@ server {
 server {
 	server_name _; # This is just an invalid value which will never trigger on a real hostname.
 	server_tokens off;
-	listen {{ $external_https_port }} ssl http2 {{ $https_proxy_protocol }};
+	listen {{ $listen_https_port }} ssl http2 {{ $https_proxy_protocol }};
 	{{ if $enable_ipv6 }}
-	listen [::]:{{ $external_https_port }} ssl http2 {{ $https_proxy_protocol }};
+	listen [::]:{{ $listen_https_port }} ssl http2 {{ $https_proxy_protocol }};
 	{{ end }}
 	{{ if $https_proxy_protocol_enabled }}
             {{ if $https_passthrough_enabled }}
@@ -323,9 +324,9 @@ server {
 	{{ if $server_tokens }}
 	server_tokens {{ $server_tokens }};
 	{{ end }}
-	listen {{ $external_https_port }} ssl http2 {{ $default_server }} {{ $https_proxy_protocol }};
+	listen {{ $listen_https_port }} ssl http2 {{ $default_server }} {{ $https_proxy_protocol }};
 	{{ if $enable_ipv6 }}
-	listen [::]:{{ $external_https_port }} ssl http2 {{ $default_server }} {{ $https_proxy_protocol }};
+	listen [::]:{{ $listen_https_port }} ssl http2 {{ $default_server }} {{ $https_proxy_protocol }};
 	{{ end }}
 	{{ if $https_proxy_protocol_enabled }}
 	    {{ if $https_passthrough_enabled }}
@@ -476,9 +477,9 @@ server {
 	{{ if $server_tokens }}
 	server_tokens {{ $server_tokens }};
 	{{ end }}
-	listen {{ $external_https_port }} ssl http2 {{ $default_server }} {{ $https_proxy_protocol }};
+	listen {{ $listen_https_port }} ssl http2 {{ $default_server }} {{ $https_proxy_protocol }};
 	{{ if $enable_ipv6 }}
-	listen [::]:{{ $external_https_port }} ssl http2 {{ $default_server }} {{ $https_proxy_protocol }};
+	listen [::]:{{ $listen_https_port }} ssl http2 {{ $default_server }} {{ $https_proxy_protocol }};
 	{{ end }}
 	{{ if $https_proxy_protocol_enabled }}
 	    {{ if $https_passthrough_enabled }}
