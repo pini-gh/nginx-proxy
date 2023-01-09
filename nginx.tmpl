@@ -440,6 +440,30 @@ upstream {{ $vpath.upstream }} {
     {{- when .Enable "access_log /var/log/nginx/access.log vhost;" "" }}
 {{- end }}
 
+{{- /*
+     * Template used as a function to parse a port specification from
+     * multiport syntax.
+     * The results (path, port, dest) are returned via the provided do dict.
+     */}}
+{{- define "parse_multiport_syntax_port_spec" }}
+    {{- $vp_data := split $.spec ":" }}
+    {{- $vp_port := index $vp_data 0 }}
+    {{- $vp_path := "/" }}
+    {{- $vp_dest := "" }}
+    {{- if (gt (len $vp_data) 1) }}
+        {{- $vp_path = index $vp_data 1 }}
+        {{- if (empty $vp_path) }}
+            {{- $vp_path = "/" }}
+        {{- end }}
+    {{- end }}
+    {{- if (gt (len $vp_data) 2) }}
+        {{- $vp_dest = index $vp_data 2 }}
+    {{- end }}
+    {{- $_ := set $ "path" $vp_path }}
+    {{- $_ := set $ "port" $vp_port }}
+    {{- $_ := set $ "dest" $vp_dest }}
+{{- end }}
+
 # If we receive X-Forwarded-Proto, pass it through; otherwise, pass along the
 # scheme used to connect to this server
 map $http_x_forwarded_proto $proxy_x_forwarded_proto {
@@ -649,29 +673,67 @@ proxy_set_header Proxy "";
     {{- $vhost_data := get $globals.vhosts $hostname | default (dict) }}
     {{- $paths := $vhost_data.paths | default (dict) }}
 
-    {{- $tmp_paths := groupByWithDefault $containers "Env.VIRTUAL_PATH" "/" }}
-
-    {{- range $path, $containers := $tmp_paths }}
-        {{- $dest := groupByKeys $containers "Env.VIRTUAL_DEST" | first | default "" }}
-        {{- $proto := groupByKeys $containers "Env.VIRTUAL_PROTO" | first | default "http" | trim }}
-
-        {{- $path_data := get $paths $path | default (dict) }}
-        {{- $path_ports := $path_data.ports | default (dict) }}
-        {{- range $port, $containers := groupByWithDefault $containers "Env.VIRTUAL_PORT" "default" }}
-            {{- $path_port_containers := get $path_ports $port | default (list) | concat $containers }}
-            {{- $_ := set $path_ports $port $path_port_containers }}
+    {{- $vhost_multiport_syntax := false }}
+    {{- range $vp_spec, $_ := groupBy $containers "Env.VIRTUAL_PORT" }}
+        {{- if (or (gt (len (split $vp_spec ":")) 1) (gt (len (split $vp_spec ",")) 1)) }}
+            {{- $vhost_multiport_syntax = true }}
+            {{- break }}
         {{- end }}
-        {{- $_ := set $path_data "ports" $path_ports }}
+    {{- end }}
 
-        {{- if (not (hasKey $path_data "dest")) }}
-            {{- $_ := set $path_data "dest" $dest }}
+    {{- if $vhost_multiport_syntax }}
+        {{- range $vp_spec, $containers := groupByMulti $containers "Env.VIRTUAL_PORT" "," }}
+            {{- $vp_spec = trim $vp_spec }}
+            {{- if not $vp_spec }}
+                {{- continue }}
+            {{- end }}
+            {{- $args := dict "spec" $vp_spec }}
+            {{- template "parse_multiport_syntax_port_spec" $args }}
+            {{- $vp_path := $args.path }}
+            {{- $vp_port := $args.port }}
+            {{- $vp_dest := $args.dest }}
+            {{- $proto := groupByKeys $containers "Env.VIRTUAL_PROTO" | first | default "http" | trim }}
+
+            {{- $path_data := when (hasKey $paths $vp_path) (get $paths $vp_path) (dict) }}
+            {{- $path_ports := when (hasKey $path_data "ports") (get $path_data "ports") (dict) }}
+            {{- $path_port_containers := when (hasKey $path_ports $vp_port) (get $path_ports $vp_port) (list) }}
+            {{- $path_port_containers = concat $path_port_containers $containers }}
+
+            {{- $_ := set $path_ports $vp_port $path_port_containers }}
+            {{- $_ := set $path_data "ports" $path_ports }}
+            {{- if (not (hasKey $path_data "dest")) }}
+                {{- $_ := set $path_data "dest" $vp_dest }}
+            {{- end }}
+            {{- if (not (hasKey $path_data "proto")) }}
+                {{- $_ := set $path_data "proto" $proto }}
+            {{- end }}
+            {{- $_ := set $paths $vp_path $path_data }}
         {{- end }}
-
-        {{- if (not (hasKey $path_data "proto")) }}
-            {{- $_ := set $path_data "proto" $proto }}
+    {{- else }}
+        {{- $tmp_paths := groupByWithDefault $containers "Env.VIRTUAL_PATH" "/" }}
+    
+        {{- range $path, $containers := $tmp_paths }}
+            {{- $dest := groupByKeys $containers "Env.VIRTUAL_DEST" | first | default "" }}
+            {{- $proto := groupByKeys $containers "Env.VIRTUAL_PROTO" | first | default "http" | trim }}
+    
+            {{- $path_data := get $paths $path | default (dict) }}
+            {{- $path_ports := $path_data.ports | default (dict) }}
+            {{- range $port, $containers := groupByWithDefault $containers "Env.VIRTUAL_PORT" "default" }}
+                {{- $path_port_containers := get $path_ports $port | default (list) | concat $containers }}
+                {{- $_ := set $path_ports $port $path_port_containers }}
+            {{- end }}
+            {{- $_ := set $path_data "ports" $path_ports }}
+    
+            {{- if (not (hasKey $path_data "dest")) }}
+                {{- $_ := set $path_data "dest" $dest }}
+            {{- end }}
+    
+            {{- if (not (hasKey $path_data "proto")) }}
+                {{- $_ := set $path_data "proto" $proto }}
+            {{- end }}
+            
+            {{- $_ := set $paths $path $path_data }}
         {{- end }}
-
-        {{- $_ := set $paths $path $path_data }}
     {{- end }}
     {{- $_ := set $vhost_data "paths" $paths }}
     {{- $_ := set $globals.vhosts $hostname $vhost_data }}
