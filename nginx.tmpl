@@ -70,7 +70,7 @@
 {{- end }}
 
 {{- define "location" }}
-    location {{ .Path }} {
+    location {{ when (ne .Path "") .Path "/" }} {
     {{- if eq .NetworkTag "internal" }}
         # Only allow traffic from internal clients
         include /etc/nginx/network_internal.conf;
@@ -106,6 +106,7 @@
 
 {{- define "upstream" }}
     {{- $networks := .Networks }}
+    {{- $virtual_port := .VirtualPort }}
     {{- $debug_all := .Debug }}
 upstream {{ .Upstream }} {
     {{- $server_found := false }}
@@ -113,12 +114,20 @@ upstream {{ .Upstream }} {
         {{- $debug := parseBool (coalesce $container.Env.DEBUG $debug_all "false") }}
         {{- /* If only 1 port exposed, use that as a default, else 80 */}}
         {{- $defaultPort := (when (eq (len $container.Addresses) 1) (first $container.Addresses) (dict "Port" "80")).Port }}
-        {{- $port := (coalesce $container.Env.VIRTUAL_PORT $defaultPort) }}
+        {{- $current_virtual_port := when (ne $virtual_port "") $virtual_port (coalesce $container.Env.VIRTUAL_PORT "") }}
+        {{- $port := when (ne $current_virtual_port "") $current_virtual_port $defaultPort }}
+        {{- if (gt (len (split $port ",")) 1) }}
+        # ERROR: Cannot use both VIRTUAL_PATH variable and VIRTUAL_PORT with multiport syntax!
+        # ERROR:    VIRTUAL_PORT: {{ $container.Env.VIRTUAL_PORT }}
+        # ERROR:    VIRTUAL_PATH: {{ $container.Env.VIRTUAL_PATH }}
+        # ERROR: Using default port as fallback
+            {{- $port = $defaultPort }}
+        {{- end }}
         {{- $address := where $container.Addresses "Port" $port | first }}
         {{- if $debug }}
     # Exposed ports: {{ $container.Addresses }}
     # Default virtual port: {{ $defaultPort }}
-    # VIRTUAL_PORT: {{ $container.Env.VIRTUAL_PORT }}
+    # VIRTUAL_PORT: {{ $current_virtual_port }}
             {{- if not $address }}
     # /!\ Virtual port not exposed
             {{- end }}
@@ -279,12 +288,43 @@ server {
     {{- $is_regexp := hasPrefix "~" $host }}
     {{- $upstream_name := when (or $is_regexp $globals.sha1_upstream_name) (sha1 $host) $host }}
 
+    {{- $virtualPorts := groupByMulti $containers "Env.VIRTUAL_PORT" "," }}
+    {{- $nVirtualPorts := len $virtualPorts }}
+
     {{- $paths := groupBy $containers "Env.VIRTUAL_PATH" }}
     {{- $nPaths := len $paths }}
-    {{- if eq $nPaths 0 }}
+
+    {{- /*
+         * No VIRTUAL_PORT, no VIRTUAL_PATH
+         */}}
+    {{- if and (eq $nPaths 0) (eq $nVirtualPorts 0) }}
         {{- $paths = dict "/" $containers }}
     {{- end }}
 
+    {{- /*
+         * Loops over VIRTUAL_PORTs
+         */}}
+    {{- range $vp_spec, $containers := $virtualPorts }}
+        {{- $vp_data := split $vp_spec ":" }}
+        {{- $vp_port := index $vp_data 0 }}
+        {{- $vp_path := "" }}
+        {{- $upstream := "" }}
+        {{- if (ge (len $vp_data) 2) }}
+            {{- $vp_path = index $vp_data 1 }}
+        {{- end }}
+        {{- if (ne $vp_path "") }}
+            {{- $sum := sha1 $vp_path }}
+            {{- $upstream = printf "%s-%s-%s" $upstream_name $sum $vp_port }}
+        {{- else }}
+            {{- $upstream = printf "%s-%s" $upstream_name $vp_port }}
+        {{- end }}
+# {{ $host }}:{{ $vp_port }}{{ $vp_path }}
+        {{- template "upstream" (dict "Upstream" $upstream "Containers" $containers "Networks" $CurrentContainer.Networks "VirtualPort" $vp_port "Debug" $global.debug_all) }}
+    {{- end }}
+
+    {{- /*
+         * Loops over VIRTUAL_PATHs
+         */}}
     {{- range $path, $containers := $paths }}
         {{- $upstream := $upstream_name }}
         {{- if gt $nPaths 0 }}
@@ -292,7 +332,7 @@ server {
             {{- $upstream = printf "%s-%s" $upstream $sum }}
         {{- end }}
 # {{ $host }}{{ $path }}
-{{ template "upstream" (dict "Upstream" $upstream "Containers" $containers "Networks" $globals.CurrentContainer.Networks "Debug" $globals.debug_all) }}
+        {{- template "upstream" (dict "Upstream" $upstream "Containers" $containers "Networks" $globals.CurrentContainer.Networks "VirtualPort" "" "Debug" $globals.debug_all) }}
     {{- end }}
 
     {{- $default_host := or ($globals.Env.DEFAULT_HOST) "" }}
@@ -432,6 +472,42 @@ server {
     include /etc/nginx/vhost.d/default;
     {{- end }}
 
+    {{- $needs_default_root_response := "true" }}
+    {{- range $vp_spec, $containers := $virtualPorts }}
+        {{- $vp_data := split $vp_spec ":" }}
+        {{- $vp_port := index $vp_data 0 }}
+        {{- $vp_path := "" }}
+        {{- $vp_dest := "" }}
+        {{- $upstream := "" }}
+        {{- if (ge (len $vp_data) 2) }}
+            {{- $vp_path = index $vp_data 1 }}
+            {{- if (ge (len $vp_data) 3) }}
+                {{- $vp_dest = index $vp_data 2 }}
+            {{- end }}
+        {{- end }}
+        {{- if (ne $vp_path "") }}
+            {{- $sum := sha1 $vp_path }}
+            {{- $upstream = printf "%s-%s-%s" $upstream_name $sum $vp_port }}
+        {{- else }}
+            {{- $upstream = printf "%s-%s" $upstream_name $vp_port }}
+        {{- end }}
+        {{- if (or (eq $vp_path "") (eq $vp_path "/")) }}
+            {{- $needs_default_root_response = "false" }}
+        {{- end }}
+        {{- /*
+             * Get the VIRTUAL_PROTO defined by containers w/ the same
+             * vhost-vpath, falling back to "http".
+             */}}
+        {{- $proto := trim (or (first (groupByKeys $containers "Env.VIRTUAL_PROTO")) "http") }}
+
+        {{- /*
+             * Get the NETWORK_ACCESS defined by containers w/ the same vhost,
+             * falling back to "external".
+             */}}
+        {{- $network_tag := or (first (groupByKeys $containers "Env.NETWORK_ACCESS")) "external" }}
+        {{- template "location" (dict "Path" $vp_path "Proto" $proto "Upstream" $upstream "Host" $host "VhostRoot" $vhost_root "Dest" $vp_dest "NetworkTag" $network_tag) }}
+    {{- end }}
+
     {{- range $path, $containers := $paths }}
         {{- /*
              * Get the VIRTUAL_PROTO defined by containers w/ the same
@@ -453,7 +529,8 @@ server {
         {{- end }}
         {{- template "location" (dict "Path" $path "Proto" $proto "Upstream" $upstream "Host" $host "VhostRoot" $vhost_root "Dest" $dest "NetworkTag" $network_tag) }}
     {{- end }}
-    {{- if (not (contains $paths "/")) }}
+
+    {{- if (and (not (contains $paths "/")) (eq $needs_default_root_response "true")) }}
     location / {
         return {{ $globals.default_root_response }};
     }
