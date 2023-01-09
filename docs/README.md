@@ -51,6 +51,8 @@ docker run --detach \
     nginx
 ```
 
+Do **not** put any space before of after each comma.
+
 ### Virtual Ports
 
 When your container exposes only one port, nginx-proxy will default to this port, else to port 80.
@@ -166,6 +168,71 @@ This would result in the following proxy config:
 - `www.example.org` -> `multiport-container:80` over `HTTP`
 - `www.example.org/service1` -> `multiport-container:8000` over `HTTP`
 - `www.example.org/service2` -> `multiport-container:9443` over `HTTPS`
+
+### Multiport Syntax for VIRTUAL_PORT (deprecated - use VIRTUAL_HOST_MULTIPORTS instead)
+
+There are services which expose more than one port. In this case you can set the `VIRTUAL_PORT` variable using multiport syntax:
+```
+VIRTUAL_PORT = [ <virtual_port> | <multiport> ];
+multiport    = port, { ",",  port };
+port         = <virtual_port> [ ":", <virtual_path> [ ":", <virtual_dest> ]];
+```
+
+`<virtual_port>`, `<virtual_path>`, and `<virtual_dest>` accept the same values that `VIRTUAL_PORT`, `VIRTUAL_PATH`, and `VIRTUAL_DEST` do.
+
+Example:
+```
+VIRTUAL_HOST: "multiport.example.com"
+VIRTUAL_PORT: "9220:~ ^/(admin|fonts?|images|webmin)/,10901,20901:/ws2p,30901:/gva/playground"
+```
+would produce one nginx `upstream` definition per port, and as many `location` blocs:
+```
+# multiport.example.com:10901
+upstream multiport.example.com-10901 {
+        ## Can be connected with "docker-gen-bridge" network
+        # blah
+        server 172.29.0.5:10901;
+}
+# multiport.example.com:20901/ws2p
+upstream multiport.example.com-5c7ebef820fe004e45e3af1d0c47971594d028b2-20901 {
+        ## Can be connected with "docker-gen-bridge" network
+        # blah
+        server 172.29.0.5:20901;
+}
+# multiport.example.com:30901/gva/playground
+upstream multiport.example.com-1f02ce2421b17d828edaabfc3014360891bb0be3-30901 {
+        ## Can be connected with "docker-gen-bridge" network
+        # blah
+        server 172.29.0.5:30901;
+}
+# multiport.example.com:9220~ ^/(admin|fonts?|images|webmin)/
+upstream multiport.example.com-cae8bfc2ea1fe6bb6fda08727ab065e8fed98aa2-9220 {
+        ## Can be connected with "docker-gen-bridge" network
+        # blah
+        server 172.29.0.5:9220;
+}
+server {
+        server_name multiport.example.com;
+        listen 80 ;
+        access_log /var/log/nginx/access.log vhost;
+        location / {
+                proxy_pass http://multiport.example.com-10901;
+        }
+        location /ws2p {
+                proxy_pass http://multiport.example.com-5c7ebef820fe004e45e3af1d0c47971594d028b2-20901;
+        }
+        location /gva/playground {
+                proxy_pass http://multiport.example.com-1f02ce2421b17d828edaabfc3014360891bb0be3-30901;
+        }
+        location ~ ^/(admin|fonts?|images|webmin)/ {
+                proxy_pass http://multiport.example.com-cae8bfc2ea1fe6bb6fda08727ab065e8fed98aa2-9220;
+        }
+}
+```
+
+As with the `VIRTUAL_PATH` it is possible to define per path location configuration files.
+
+**Important note:** All `VIRTUAL_PATH` variables will be ignored for any virtual host appearing in a at least one container where `VIRTUAL_PORT` uses the multiport syntax, .
 
 ⬆️ [back to table of contents](#table-of-contents)
 
