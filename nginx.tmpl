@@ -527,6 +527,7 @@ proxy_set_header Proxy "";
             {{- $_ := set $paths $path $path_data }}
         {{- end }}
         {{- $_ := set $vhost_data "paths" $paths }}
+        {{- $_ := set $vhost_data "hostname" $hostname }}
         {{- $is_regexp := hasPrefix "~" $hostname }}
         {{- $_ := set $vhost_data "upstream_name" (when (or $is_regexp $globals.sha1_upstream_name) (sha1 $hostname) $hostname) }}
         {{- $_ := set $globals.vhosts $hostname $vhost_data }}
@@ -556,11 +557,32 @@ proxy_set_header Proxy "";
     {{- $vhost_data := when (hasKey $globals.vhosts $hostname) (get $globals.vhosts $hostname) (dict) }}
     {{- $paths := coalesce $vhost_data.paths (dict) }}
 
+    {{- $actual_hostname := $hostname }}
+    {{- $vhost_splitted := list }}
+    {{- if (regexMatch "^\\[[0-9a-fA-F:]+\\][^:]*" $hostname) }}
+        {{- /*
+             * Raw IPv6 host must not be splitted
+             */}}
+        {{- $vhost_splitted = append $vhost_splitted (regexFind "^\\[[0-9a-fA-F:]+\\][^:]*" $hostname) }}
+        {{- $hostname = regexReplaceAll "^\\[[0-9a-fA-F:]+\\][^:]*" $hostname "" }}
+        {{- $vhost_splitted = concat $vhost_splitted (slice (split $hostname ":") 1) }}
+    {{- else }}
+        {{- $vhost_splitted = split $hostname ":" }}
+    {{- end }}
+    {{- $actual_hostname = index $vhost_splitted 0 }}
+    {{- $host_has_dedicated_port := gt (len $vhost_splitted) 1 }}
+    {{- $dedicated_port := "" }}
+    {{- if $host_has_dedicated_port }}
+        {{- $dedicated_port = trim (index $vhost_splitted 1) }}
+        {{- $host_has_dedicated_port = not (empty $dedicated_port) }}
+    {{- end }}
     {{- $vhost_multiport_syntax := false }}
-    {{- range $vp_spec, $_ := groupBy $containers "Env.VIRTUAL_PORT" }}
-        {{- if (or (gt (len (split $vp_spec ":")) 1) (gt (len (split $vp_spec ",")) 1)) }}
-            {{- $vhost_multiport_syntax = true }}
-            {{- break }}
+    {{- if (not $host_has_dedicated_port) }}
+        {{- range $vp_spec, $_ := groupBy $containers "Env.VIRTUAL_PORT" }}
+            {{- if (or (gt (len (split $vp_spec ":")) 1) (gt (len (split $vp_spec ",")) 1)) }}
+                {{- $vhost_multiport_syntax = true }}
+                {{- break }}
+            {{- end }}
         {{- end }}
     {{- end }}
 
@@ -593,7 +615,7 @@ proxy_set_header Proxy "";
     
         {{- range $path, $containers := $tmp_paths }}
             {{- $dest := or (first (groupByKeys $containers "Env.VIRTUAL_DEST")) "" }}
-            {{- $port := "legacy" }}
+            {{- $port := when $host_has_dedicated_port $dedicated_port "legacy" }}
             {{- $path_data := when (hasKey $paths $path) (get $paths $path) (dict) }}
             {{- $path_ports := when (hasKey $path_data "ports") (get $path_data "ports") (dict) }}
             {{- $path_port_containers := when (hasKey $path_ports $port) (get $path_ports $port) (list) }}
@@ -607,8 +629,9 @@ proxy_set_header Proxy "";
         {{- end }}
     {{- end }}
     {{- $_ := set $vhost_data "paths" $paths }}
+    {{- $_ := set $vhost_data "hostname" $actual_hostname }}
     {{- $is_regexp := hasPrefix "~" $hostname }}
-    {{- $_ := set $vhost_data "upstream_name" (when (or $is_regexp $globals.sha1_upstream_name) (sha1 $hostname) $hostname) }}
+    {{- $_ := set $vhost_data "upstream_name" (printf "%s%s%s" (when (or $is_regexp $globals.sha1_upstream_name) (sha1 $actual_hostname) $actual_hostname) (when $host_has_dedicated_port "_" "") $dedicated_port) }}
     {{- $_ := set $globals.vhosts $hostname $vhost_data }}
 {{- end }}
 
@@ -804,7 +827,7 @@ server {
 
     {{- if (eq $vhost.https_method "redirect") }}
 server {
-    server_name {{ $hostname }};
+    server_name {{ $vhost.hostname }};
         {{- if $vhost.server_tokens }}
     server_tokens {{ $vhost.server_tokens }};
         {{- end }}
@@ -837,7 +860,7 @@ server {
     {{- end }}
 
 server {
-    server_name {{ $hostname }};
+    server_name {{ $vhost.hostname }};
     {{- if $vhost.server_tokens }}
     server_tokens {{ $vhost.server_tokens }};
     {{- end }}
@@ -933,8 +956,8 @@ server {
         {{- end }}
     {{- end }}
 
-    {{- if (exists (printf "/etc/nginx/vhost.d/%s" $hostname)) }}
-    include {{ printf "/etc/nginx/vhost.d/%s" $hostname }};
+    {{- if (exists (printf "/etc/nginx/vhost.d/%s" $vhost.hostname)) }}
+    include {{ printf "/etc/nginx/vhost.d/%s" $vhost.hostname }};
     {{- else if (exists "/etc/nginx/vhost.d/default") }}
     include /etc/nginx/vhost.d/default;
     {{- end }}
