@@ -538,6 +538,26 @@ proxy_set_header Proxy "";
         {{- /* Ignore containers with VIRTUAL_HOST set to the empty string. */}}
         {{- continue }}
     {{- end }}
+    {{- $actual_hostname := $hostname }}
+
+    {{- $vhost_data := list }}
+    {{- if (regexMatch "^\\[[0-9a-fA-F:]+\\][^:]*" $hostname) }}
+        {{- /*
+             * Raw IPv6 host must not be splitted
+             */}}
+        {{- $vhost_data = append $vhost_data (regexFind "^\\[[0-9a-fA-F:]+\\][^:]*" $hostname) }}
+        {{- $hostname = regexReplaceAll "^\\[[0-9a-fA-F:]+\\][^:]*" $hostname "" }}
+        {{- $vhost_data = concat $vhost_data (slice (split $hostname ":") 1) }}
+    {{- else }}
+        {{- $vhost_data = split $hostname ":" }}
+    {{- end }}
+    {{- $actual_hostname = index $vhost_data 0 }}
+    {{- $host_has_dedicated_port := gt (len $vhost_data) 1 }}
+    {{- $dedicated_port := "" }}
+    {{- if $host_has_dedicated_port }}
+        {{- $dedicated_port = trim (index $vhost_data 1) }}
+        {{- $host_has_dedicated_port = not (empty $dedicated_port) }}
+    {{- end }}
 
     {{- $certName := first (groupByKeys $containers "Env.CERT_NAME") }}
     {{- $vhostCert := closest (dir "/etc/nginx/certs") (printf "%s.crt" $hostname) }}
@@ -552,7 +572,7 @@ proxy_set_header Proxy "";
     {{- $http3_enabled := parseBool (or (first (keys (groupByLabel $containers "com.github.nginx-proxy.nginx-proxy.http3.enable"))) $globals.Env.ENABLE_HTTP3 "false")}}
 
     {{- $is_regexp := hasPrefix "~" $hostname }}
-    {{- $upstream_name := when (or $is_regexp $globals.sha1_upstream_name) (sha1 $hostname) $hostname }}
+    {{- $upstream_name := printf "%s%s%s" (when (or $is_regexp $globals.sha1_upstream_name) (sha1 $actual_hostname) $actual_hostname) (when $host_has_dedicated_port "_" "") $dedicated_port }}
 
     {{- /* Get the SERVER_TOKENS defined by containers w/ the same vhost, falling back to "". */}}
     {{- $server_tokens := trim (or (first (groupByKeys $containers "Env.SERVER_TOKENS")) "") }}
@@ -567,10 +587,12 @@ proxy_set_header Proxy "";
     {{- $vhost_root := or (first (groupByKeys $containers "Env.VIRTUAL_ROOT")) "/var/www/public" }}
 
     {{- $vhost_multiport_syntax := false }}
-    {{- range $vp_spec, $_ := groupBy $containers "Env.VIRTUAL_PORT" }}
-        {{- if (or (gt (len (split $vp_spec ":")) 1) (gt (len (split $vp_spec ",")) 1)) }}
-            {{- $vhost_multiport_syntax = true }}
-            {{- break }}
+    {{- if (not $host_has_dedicated_port) }}
+        {{- range $vp_spec, $_ := groupBy $containers "Env.VIRTUAL_PORT" }}
+            {{- if (or (gt (len (split $vp_spec ":")) 1) (gt (len (split $vp_spec ",")) 1)) }}
+                {{- $vhost_multiport_syntax = true }}
+                {{- break }}
+            {{- end }}
         {{- end }}
     {{- end }}
 
@@ -624,7 +646,7 @@ proxy_set_header Proxy "";
             {{- $args := dict "Containers" $containers "Path" $path "Upstream_name" $upstream_name "Has_virtual_paths" $has_virtual_paths "Multiport_syntax" false }}
             {{- template "get_path_info" $args }}
             {{- $_ := set $paths $path (dict
-                "ports" (dict "legacy" $containers)
+                "ports" (dict (when $host_has_dedicated_port $dedicated_port "legacy") $containers)
                 "dest" (or (first (groupByKeys $containers "Env.VIRTUAL_DEST")) "")
                 "proto" $args.proto
                 "network_tag" $args.network_tag
@@ -639,6 +661,7 @@ proxy_set_header Proxy "";
         "cert" $cert
         "cert_ok" $cert_ok
         "default" $default
+        "hostname" $actual_hostname
         "hsts" $hsts
         "https_method" $https_method
         "http2_enabled" $http2_enabled
@@ -747,7 +770,7 @@ server {
 
     {{- if and $vhost.cert_ok (eq $vhost.https_method "redirect") }}
 server {
-    server_name {{ $hostname }};
+    server_name {{ $vhost.hostname }};
         {{- if $vhost.server_tokens }}
     server_tokens {{ $vhost.server_tokens }};
         {{- end }}
@@ -778,7 +801,7 @@ server {
     {{- end }}
 
 server {
-    server_name {{ $hostname }};
+    server_name {{ $vhost.hostname }};
     {{- if $vhost.server_tokens }}
     server_tokens {{ $vhost.server_tokens }};
     {{- end }}
@@ -864,8 +887,8 @@ server {
         {{- end }}
     {{- end }}
 
-    {{- if (exists (printf "/etc/nginx/vhost.d/%s" $hostname)) }}
-    include {{ printf "/etc/nginx/vhost.d/%s" $hostname }};
+    {{- if (exists (printf "/etc/nginx/vhost.d/%s" $vhost.hostname)) }}
+    include {{ printf "/etc/nginx/vhost.d/%s" $vhost.hostname }};
     {{- else if (exists "/etc/nginx/vhost.d/default") }}
     include /etc/nginx/vhost.d/default;
     {{- end }}
