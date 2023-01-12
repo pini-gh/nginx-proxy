@@ -24,3 +24,8 @@ def test_port_83_is_server_by_regex_location_slash83_with_rewrite_in_custom_loca
     r = nginxproxy.get("http://web.nginx-proxy.tld/83/port")
     assert r.status_code == 200
     assert "answer from port 83\n" in r.text
+
+def test_port_84_is_served_by_web1(docker_compose, nginxproxy):
+    r = nginxproxy.get("http://web1.nginx-proxy.tld/port")
+    assert r.status_code == 200
+    assert "answer from port 84\n" in r.text
