@@ -642,6 +642,8 @@ proxy_set_header Proxy "";
             {{- $_ := set $paths $path $path_data }}
         {{- end }}
         {{- $_ := set $vhost_data "paths" $paths }}
+        {{- $_ := set $vhost_data "hostname" $hostname }}
+        {{- $_ := set $vhost_data "upstream_name_suffix" "" }}
         {{- $_ := set $globals.vhosts $hostname $vhost_data }}
     {{- end }}
 {{- end }}
@@ -669,11 +671,32 @@ proxy_set_header Proxy "";
     {{- $vhost_data := get $globals.vhosts $hostname | default (dict) }}
     {{- $paths := $vhost_data.paths | default (dict) }}
 
+    {{- $actual_hostname := $hostname }}
+    {{- $vhost_splitted := list }}
+    {{- if (regexMatch "^\\[[0-9a-fA-F:]+\\][^:]*" $hostname) }}
+        {{- /*
+             * Raw IPv6 host must not be splitted
+             */}}
+        {{- $vhost_splitted = append $vhost_splitted (regexFind "^\\[[0-9a-fA-F:]+\\][^:]*" $hostname) }}
+        {{- $hostname = regexReplaceAll "^\\[[0-9a-fA-F:]+\\][^:]*" $hostname "" }}
+        {{- $vhost_splitted = concat $vhost_splitted (slice (split $hostname ":") 1) }}
+    {{- else }}
+        {{- $vhost_splitted = split $hostname ":" }}
+    {{- end }}
+    {{- $actual_hostname = index $vhost_splitted 0 }}
+    {{- $host_has_dedicated_port := gt (len $vhost_splitted) 1 }}
+    {{- $dedicated_port := "" }}
+    {{- if $host_has_dedicated_port }}
+        {{- $dedicated_port = trim (index $vhost_splitted 1) }}
+        {{- $host_has_dedicated_port = not (empty $dedicated_port) }}
+    {{- end }}
     {{- $vhost_multiport_syntax := false }}
-    {{- range $vp_spec, $_ := groupBy $containers "Env.VIRTUAL_PORT" }}
-        {{- if (or (gt (len (split $vp_spec ":")) 1) (gt (len (split $vp_spec ",")) 1)) }}
-            {{- $vhost_multiport_syntax = true }}
-            {{- break }}
+    {{- if (not $host_has_dedicated_port) }}
+        {{- range $vp_spec, $_ := groupBy $containers "Env.VIRTUAL_PORT" }}
+            {{- if (or (gt (len (split $vp_spec ":")) 1) (gt (len (split $vp_spec ",")) 1)) }}
+                {{- $vhost_multiport_syntax = true }}
+                {{- break }}
+            {{- end }}
         {{- end }}
     {{- end }}
 
@@ -714,9 +737,14 @@ proxy_set_header Proxy "";
     
             {{- $path_data := get $paths $path | default (dict) }}
             {{- $path_ports := $path_data.ports | default (dict) }}
-            {{- range $port, $containers := groupByWithDefault $containers "Env.VIRTUAL_PORT" "default" }}
-                {{- $path_port_containers := get $path_ports $port | default (list) | concat $containers }}
-                {{- $_ := set $path_ports $port $path_port_containers }}
+            {{- if $host_has_dedicated_port }}
+                {{- $path_port_containers := get $path_ports $dedicated_port | default (list) | concat $containers }}
+                {{- $_ := set $path_ports $dedicated_port $path_port_containers }}
+            {{- else }}
+                {{- range $port, $containers := groupByWithDefault $containers "Env.VIRTUAL_PORT" "default" }}
+                    {{- $path_port_containers := get $path_ports $port | default (list) | concat $containers }}
+                    {{- $_ := set $path_ports $port $path_port_containers }}
+                {{- end }}
             {{- end }}
             {{- $_ := set $path_data "ports" $path_ports }}
     
@@ -732,13 +760,16 @@ proxy_set_header Proxy "";
         {{- end }}
     {{- end }}
     {{- $_ := set $vhost_data "paths" $paths }}
+    {{- $_ := set $vhost_data "hostname" $actual_hostname }}
+    {{- $_ := set $vhost_data "upstream_name_suffix" (printf "%s%s" ($host_has_dedicated_port | ternary "_" "") $dedicated_port) }}
     {{- $_ := set $globals.vhosts $hostname $vhost_data }}
 {{- end }}
 
 {{- /* Loop over $globals.vhosts and update it with the remaining informations about each vhost. */}}
 {{- range $hostname, $vhost_data := $globals.vhosts }}
-    {{- $is_regexp := hasPrefix "~" $hostname }}
-    {{- $upstream_name := or $is_regexp $globals.config.sha1_upstream_name | ternary (sha1 $hostname) $hostname }}
+    {{- $is_regexp := hasPrefix "~" $vhost_data.hostname }}
+    {{- $upstream_name := or $is_regexp $globals.config.sha1_upstream_name | ternary (sha1 $vhost_data.hostname) $vhost_data.hostname }}
+    {{- $upstream_name = printf "%s%s" $upstream_name $vhost_data.upstream_name_suffix }}
 
     {{- $vhost_containers := list }}
 
@@ -944,7 +975,7 @@ server {
 
     {{- if (eq $vhost.https_method "redirect") }}
 server {
-    server_name {{ $hostname }};
+    server_name {{ $vhost.hostname }};
         {{- if $vhost.server_tokens }}
     server_tokens {{ $vhost.server_tokens }};
         {{- end }}
@@ -986,22 +1017,22 @@ server {
 server {
     {{- if $vhost.is_regexp }}
         {{- if or
-            (printf "/etc/nginx/vhost.d/%s" $hostname | exists)
-            (printf "/etc/nginx/vhost.d/%s_location" $hostname | exists)
-            (printf "/etc/nginx/vhost.d/%s_location_override" $hostname | exists)
-            (printf "/etc/nginx/htpasswd/%s" $hostname | exists)
+            (printf "/etc/nginx/vhost.d/%s" $vhost.hostname | exists)
+            (printf "/etc/nginx/vhost.d/%s_location" $vhost.hostname | exists)
+            (printf "/etc/nginx/vhost.d/%s_location_override" $vhost.hostname | exists)
+            (printf "/etc/nginx/htpasswd/%s" $vhost.hostname | exists)
         }}
     # https://github.com/nginx-proxy/nginx-proxy/issues/2529#issuecomment-2437609249
     # Support for vhost config file(s) named like a regexp ({{ $hostname }}) has been removed from nginx-proxy.
-    # Please name your vhost config file(s) with the sha1 of the regexp instead ({{ $hostname }} -> {{ sha1 $hostname }}) :
-    # - /etc/nginx/vhost.d/{{ sha1 $hostname }}
-    # - /etc/nginx/vhost.d/{{ sha1 $hostname }}_location
-    # - /etc/nginx/vhost.d/{{ sha1 $hostname }}_location_override
-    # - /etc/nginx/htpasswd/{{ sha1 $hostname }}
+    # Please name your vhost config file(s) with the sha1 of the regexp instead ({{ $vhost.hostname }} -> {{ sha1 $vhost.hostname }}) :
+    # - /etc/nginx/vhost.d/{{ sha1 $vhost.hostname }}
+    # - /etc/nginx/vhost.d/{{ sha1 $vhost.hostname }}_location
+    # - /etc/nginx/vhost.d/{{ sha1 $vhost.hostname }}_location_override
+    # - /etc/nginx/htpasswd/{{ sha1 $vhost.hostname }}
         {{- end }}
     {{- end }}
 
-    server_name {{ $hostname }};
+    server_name {{ $vhost.hostname }};
     {{- if $vhost.server_tokens }}
     server_tokens {{ $vhost.server_tokens }};
     {{- end }}
@@ -1076,7 +1107,7 @@ server {
         {{- end }}
     {{- end }}
 
-    {{- $vhostFileName :=  $vhost.is_regexp | ternary (sha1 $hostname) $hostname }}
+    {{- $vhostFileName :=  $vhost.is_regexp | ternary (sha1 $vhost.hostname) $vhost.hostname }}
 
     {{- if (exists (printf "/etc/nginx/vhost.d/%s" $vhostFileName)) }}
     include {{ printf "/etc/nginx/vhost.d/%s" $vhostFileName }};
