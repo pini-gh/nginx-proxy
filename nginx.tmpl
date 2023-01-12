@@ -449,18 +449,25 @@ server {
     {{- $default_server := when $vhost.default "default_server" "" }}
     {{- $https_method := $vhost.https_method }}
 
+    {{- $host_data := split $host ":" }}
+    {{- $host = index $host_data 0 }}
+    {{- $host_has_dedicated_port := gt (len $host_data) 1 }}
+    {{- $host_dedicated_port := when $host_has_dedicated_port (index $host_data (when $host_has_dedicated_port 1 0)) "" }}
+
     {{- $is_regexp := hasPrefix "~" $host }}
-    {{- $upstream_name := when (or $is_regexp $globals.sha1_upstream_name) (sha1 $host) $host }}
+    {{- $upstream_name := printf "%s%s%s" (when (or $is_regexp $globals.sha1_upstream_name) (sha1 $host) $host) (when $host_has_dedicated_port "_" "") $host_dedicated_port }}
 
     {{- /*
          * Split containers between legacy VIRTUAL_PORT syntax and multiport one
          */}}
     {{- $multiport_syntax_containers := list }}
-    {{- range $virtual_port, $vp_containers := groupBy $containers "Env.VIRTUAL_PORT" }}
-        {{- if (or (gt (len (split $virtual_port ":")) 1) (gt (len (split $virtual_port ",")) 1)) }}
-            {{- $multiport_syntax_containers = concat $multiport_syntax_containers $vp_containers }}
-            {{- range $container := $vp_containers }}
-                {{- $containers = without $containers $container }}
+    {{- if (not $host_has_dedicated_port) }}
+        {{- range $virtual_port, $vp_containers := groupBy $containers "Env.VIRTUAL_PORT" }}
+            {{- if (or (gt (len (split $virtual_port ":")) 1) (gt (len (split $virtual_port ",")) 1)) }}
+                {{- $multiport_syntax_containers = concat $multiport_syntax_containers $vp_containers }}
+                {{- range $container := $vp_containers }}
+                    {{- $containers = without $containers $container }}
+                {{- end }}
             {{- end }}
         {{- end }}
     {{- end }}
@@ -493,7 +500,7 @@ server {
             {{- $upstream = printf "%s-%s" $upstream $sum }}
         {{- end }}
 # {{ $host }}{{ $path }}
-        {{- template "upstream" (dict "globals" $globals "Upstream" $upstream "Containers" $containers "VirtualPort" "") }}
+        {{- template "upstream" (dict "globals" $globals "Upstream" $upstream "Containers" $containers "VirtualPort" $host_dedicated_port) }}
     {{- end }}
 
     {{- /*
