@@ -8,9 +8,10 @@ services:
       - "81"
       - "82"
       - "83"
+      - "84"
     environment:
-      WEB_PORTS: "80 81 82 83"
-      VIRTUAL_HOST: "web.nginx-proxy.tld"
+      WEB_PORTS: "80 81 82 83 84"
+      VIRTUAL_HOST: "web.nginx-proxy.tld, web1.nginx-proxy.tld:84"
       VIRTUAL_PORT: "80,81:/81:/,82:/82:/port,83:~ ^/[8][3]"
   
   sut:
