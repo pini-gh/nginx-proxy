@@ -102,6 +102,8 @@ By default, docker uses IPv6-to-IPv4 NAT. This means all client connections from
 
 If you need to support multiple virtual hosts for a container, you can separate each entry with commas.  For example, `foo.bar.com,baz.bar.com,bar.com` and each host will be setup the same.
 
+Do **not** put any space before of after each comma.
+
 ### Virtual Ports
 
 When your container exposes only one port, nginx-proxy will default to this port, else to port 80.
@@ -176,7 +178,7 @@ server {
 
 As with the `VIRTUAL_PATH` it is possible to define per path location configuration files.
 
-**Important note:**  When using `VIRTUAL_MULTIPORT` do not use `VIRTUAL_PORT`, `VIRTUAL_PATH`, nor `VIRTUAL_DEST` for the same container.
+**Important note:** All `VIRTUAL_PATH` variables will be ignored for any virtual host appearing in a at least one container where `VIRTUAL_PORT` uses the multiport syntax, .
 
 ### Wildcard Hosts
 
