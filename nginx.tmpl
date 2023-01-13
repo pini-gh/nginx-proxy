@@ -97,13 +97,6 @@ upstream {{ .Upstream }} {
 		{{ $defaultPort := (when (eq (len $container.Addresses) 1) (first $container.Addresses) (dict "Port" "80")).Port }}
 		{{ $current_virtual_port := when (ne $virtual_port "") $virtual_port (coalesce $container.Env.VIRTUAL_PORT "") }}
 		{{ $port := when (ne $current_virtual_port "") $current_virtual_port $defaultPort }}
-		{{ if (gt (len (split $port ",")) 1) }}
-	# ERROR: Cannot use both VIRTUAL_PATH variable and VIRTUAL_PORT with multiport syntax!
-	# ERROR:    VIRTUAL_PORT: {{ $container.Env.VIRTUAL_PORT }}
-	# ERROR:    VIRTUAL_PATH: {{ $container.Env.VIRTUAL_PATH }}
-	# ERROR: Using default port as fallback
-			{{ $port = $defaultPort }}
-		{{ end }}
 		{{ $address := where $container.Addresses "Port" $port | first }}
 		{{ if $debug }}
         # Exposed ports: {{ $container.Addresses }}
@@ -262,40 +255,39 @@ server {
 {{ end }}
 
 {{ range $host, $containers := groupByMulti $ "Env.VIRTUAL_HOST" "," }}
+{{ if (ne (trim $host) $host) }}
+# WARNING: virtual host '{{ $host }}' is not trimmed
+	{{ $host = trim $host }}
+{{ end }}
 
-{{ $host := trim $host }}
 {{ $is_regexp := hasPrefix "~" $host }}
 {{ $upstream_name := when (or $is_regexp $sha1_upstream_name) (sha1 $host) $host }}
 
-{{ $virtualPorts := groupByMulti $containers "Env.VIRTUAL_PORT" "," }}
+{{/* Split containers between legacy VIRTUAL_PORT syntax and multiport one */}}
+{{ $multiport_syntax_containers := list }}
+{{ range $virtual_port, $vp_containers := groupBy $containers "Env.VIRTUAL_PORT" }}
+	{{ if (or (gt (len (split $virtual_port ":")) 1) (gt (len (split $virtual_port ",")) 1)) }}
+		{{ $multiport_syntax_containers = concat $multiport_syntax_containers $vp_containers }}
+		{{ range $container := $vp_containers }}
+			{{ $containers = without $containers $container }}
+		{{ end }}
+	{{ end }}
+{{ end }}
+{{ $virtualPorts := groupByMulti $multiport_syntax_containers "Env.VIRTUAL_PORT" "," }}
 {{ $nVirtualPorts := len $virtualPorts }}
 
-{{ $paths := groupBy $containers "Env.VIRTUAL_PATH" }}
+{{/* Ignore VIRTUAL_PATH variables when using ultiport syntax */}}
+{{ $paths := dict }}
+{{ if (eq $nVirtualPorts 0) }}
+	{{ $paths = groupBy $containers "Env.VIRTUAL_PATH" }}
+{{ end }}
 {{ $nPaths := len $paths }}
 
 {{/* No VIRTUAL_PORT, no VIRTUAL_PATH */}}
-{{ if and (eq $nPaths 0) (eq $nVirtualPorts 0) }}
+{{ if (and (eq $nPaths 0) (gt (len $containers) 0)) }}
 # {{ $host }}
 	{{ template "upstream" (dict "Upstream" $upstream_name "Containers" $containers "Networks" $CurrentContainer.Networks "VirtualPort" "" "Debug" $debug_all) }}
 {{ else }}
-	{{/* Loops over VIRTUAL_PORTs */}}
-	{{ range $vp_spec, $containers := $virtualPorts }}
-		{{ $vp_data := split $vp_spec ":" }}
-		{{ $vp_port := index $vp_data 0 }}
-		{{ $vp_path := "" }}
-		{{ $upstream := "" }}
-		{{ if (ge (len $vp_data) 2) }}
-			{{ $vp_path = index $vp_data 1 }}
-		{{ end }}
-		{{ if (ne $vp_path "") }}
-			{{ $sum := sha1 $vp_path }}
-			{{ $upstream = printf "%s-%s-%s" $upstream_name $sum $vp_port }}
-		{{ else }}
-			{{ $upstream = printf "%s-%s" $upstream_name $vp_port }}
-		{{ end }}
-# {{ $host }}:{{ $vp_port }}{{ $vp_path }}
-		{{ template "upstream" (dict "Upstream" $upstream "Containers" $containers "Networks" $CurrentContainer.Networks "VirtualPort" $vp_port "Debug" $debug_all) }}
-	{{ end }}
 	{{/* Loops over VIRTUAL_PATHs */}}
 	{{ range $path, $containers := $paths }}
 		{{ $sum := sha1 $path }}
@@ -303,6 +295,24 @@ server {
 # {{ $host }}{{ $path }}
 		{{ template "upstream" (dict "Upstream" $upstream "Containers" $containers "Networks" $CurrentContainer.Networks "VirtualPort" "" "Debug" $debug_all) }}
 	{{ end }}
+{{ end }}
+{{/* Loops over multiport syntax containers */}}
+{{ range $vp_spec, $containers := $virtualPorts }}
+	{{ $vp_data := split $vp_spec ":" }}
+	{{ $vp_port := index $vp_data 0 }}
+	{{ $vp_path := "" }}
+	{{ $upstream := "" }}
+	{{ if (ge (len $vp_data) 2) }}
+		{{ $vp_path = index $vp_data 1 }}
+	{{ end }}
+	{{ if (ne $vp_path "") }}
+		{{ $sum := sha1 $vp_path }}
+		{{ $upstream = printf "%s-%s-%s" $upstream_name $sum $vp_port }}
+	{{ else }}
+		{{ $upstream = printf "%s-%s" $upstream_name $vp_port }}
+	{{ end }}
+# {{ $host }}:{{ $vp_port }}{{ $vp_path }}
+	{{ template "upstream" (dict "Upstream" $upstream "Containers" $containers "Networks" $CurrentContainer.Networks "VirtualPort" $vp_port "Debug" $debug_all) }}
 {{ end }}
 
 {{ $default_host := or ($.Env.DEFAULT_HOST) "" }}
@@ -414,43 +424,16 @@ server {
 	include /etc/nginx/vhost.d/default;
 	{{ end }}
 
-	{{ if and (eq $nPaths 0) (eq $nVirtualPorts 0) }}
+	{{ $needs_default_root_response := "true" }}
+	{{ if (and (eq $nPaths 0) (gt (len $containers) 0)) }}
 		{{/* Get the VIRTUAL_PROTO defined by containers w/ the same vhost, falling back to "http" */}}
 		{{ $proto := trim (or (first (groupByKeys $containers "Env.VIRTUAL_PROTO")) "http") }}
 
 		{{/* Get the NETWORK_ACCESS defined by containers w/ the same vhost, falling back to "external" */}}
 		{{ $network_tag := or (first (groupByKeys $containers "Env.NETWORK_ACCESS")) "external" }}
 		{{ template "location" (dict "Path" "/" "Proto" $proto "Upstream" $upstream_name "Host" $host "VhostRoot" $vhost_root "Dest" "" "NetworkTag" $network_tag) }}
+		{{ $needs_default_root_response = "false" }}
 	{{ else }}
-		{{ $needs_default_root_response := "true" }}
-		{{ range $vp_spec, $containers := $virtualPorts }}
-			{{ $vp_data := split $vp_spec ":" }}
-			{{ $vp_port := index $vp_data 0 }}
-			{{ $vp_path := "" }}
-			{{ $vp_dest := "" }}
-			{{ $upstream := "" }}
-			{{ if (ge (len $vp_data) 2) }}
-				{{ $vp_path = index $vp_data 1 }}
-				{{ if (ge (len $vp_data) 3) }}
-					{{ $vp_dest = index $vp_data 2 }}
-				{{ end }}
-			{{ end }}
-			{{ if (ne $vp_path "") }}
-				{{ $sum := sha1 $vp_path }}
-				{{ $upstream = printf "%s-%s-%s" $upstream_name $sum $vp_port }}
-			{{ else }}
-				{{ $upstream = printf "%s-%s" $upstream_name $vp_port }}
-			{{ end }}
-			{{ if (or (eq $vp_path "") (eq $vp_path "/")) }}
-				{{ $needs_default_root_response = "false" }}
-			{{ end }}
-			{{/* Get the VIRTUAL_PROTO defined by containers w/ the same vhost-vpath, falling back to "http" */}}
-			{{ $proto := trim (or (first (groupByKeys $containers "Env.VIRTUAL_PROTO")) "http") }}
-
-			{{/* Get the NETWORK_ACCESS defined by containers w/ the same vhost, falling back to "external" */}}
-			{{ $network_tag := or (first (groupByKeys $containers "Env.NETWORK_ACCESS")) "external" }}
-			{{ template "location" (dict "Path" $vp_path "Proto" $proto "Upstream" $upstream "Host" $host "VhostRoot" $vhost_root "Dest" $vp_dest "NetworkTag" $network_tag) }}
-		{{ end }}
 		{{ range $path, $containers := $paths }}
 			{{/* Get the VIRTUAL_PROTO defined by containers w/ the same vhost-vpath, falling back to "http" */}}
 			{{ $proto := trim (or (first (groupByKeys $containers "Env.VIRTUAL_PROTO")) "http") }}
@@ -461,12 +444,43 @@ server {
 			{{ $upstream := printf "%s-%s" $upstream_name $sum }}
 			{{ $dest := (or (first (groupByKeys $containers "Env.VIRTUAL_DEST")) "") }}
 			{{ template "location" (dict "Path" $path "Proto" $proto "Upstream" $upstream "Host" $host "VhostRoot" $vhost_root "Dest" $dest "NetworkTag" $network_tag) }}
+			{{ if (eq $path "/") }}
+				{{ $needs_default_root_response = "false" }}
+			{{ end }}
 		{{ end }}
-		{{ if (and (not (contains $paths "/")) (eq $needs_default_root_response "true")) }}
+	{{ end }}
+	{{ range $vp_spec, $containers := $virtualPorts }}
+		{{ $vp_data := split $vp_spec ":" }}
+		{{ $vp_port := index $vp_data 0 }}
+		{{ $vp_path := "" }}
+		{{ $vp_dest := "" }}
+		{{ $upstream := "" }}
+		{{ if (ge (len $vp_data) 2) }}
+			{{ $vp_path = index $vp_data 1 }}
+			{{ if (ge (len $vp_data) 3) }}
+				{{ $vp_dest = index $vp_data 2 }}
+			{{ end }}
+		{{ end }}
+		{{ if (ne $vp_path "") }}
+			{{ $sum := sha1 $vp_path }}
+			{{ $upstream = printf "%s-%s-%s" $upstream_name $sum $vp_port }}
+		{{ else }}
+			{{ $upstream = printf "%s-%s" $upstream_name $vp_port }}
+		{{ end }}
+		{{ if (or (eq $vp_path "") (eq $vp_path "/")) }}
+			{{ $needs_default_root_response = "false" }}
+		{{ end }}
+		{{/* Get the VIRTUAL_PROTO defined by containers w/ the same vhost-vpath, falling back to "http" */}}
+		{{ $proto := trim (or (first (groupByKeys $containers "Env.VIRTUAL_PROTO")) "http") }}
+
+		{{/* Get the NETWORK_ACCESS defined by containers w/ the same vhost, falling back to "external" */}}
+		{{ $network_tag := or (first (groupByKeys $containers "Env.NETWORK_ACCESS")) "external" }}
+		{{ template "location" (dict "Path" $vp_path "Proto" $proto "Upstream" $upstream "Host" $host "VhostRoot" $vhost_root "Dest" $vp_dest "NetworkTag" $network_tag) }}
+	{{ end }}
+	{{ if (eq $needs_default_root_response "true") }}
 	location / {
 		return {{ $default_root_response }};
 	}
-		{{ end }}
 	{{ end }}
 }
 
@@ -491,43 +505,16 @@ server {
 	include /etc/nginx/vhost.d/default;
 	{{ end }}
 
-	{{ if and (eq $nPaths 0) (eq $nVirtualPorts 0) }}
+	{{ $needs_default_root_response := "true" }}
+	{{ if (and (eq $nPaths 0) (gt (len $containers) 0)) }}
 		{{/* Get the VIRTUAL_PROTO defined by containers w/ the same vhost, falling back to "http" */}}
 		{{ $proto := trim (or (first (groupByKeys $containers "Env.VIRTUAL_PROTO")) "http") }}
 
 		{{/* Get the NETWORK_ACCESS defined by containers w/ the same vhost, falling back to "external" */}}
 		{{ $network_tag := or (first (groupByKeys $containers "Env.NETWORK_ACCESS")) "external" }}
 		{{ template "location" (dict "Path" "/" "Proto" $proto "Upstream" $upstream_name "Host" $host "VhostRoot" $vhost_root "Dest" "" "NetworkTag" $network_tag) }}
+		{{ $needs_default_root_response = "false" }}
 	{{ else }}
-		{{ $needs_default_root_response := "true" }}
-		{{ range $vp_spec, $containers := $virtualPorts }}
-			{{ $vp_data := split $vp_spec ":" }}
-			{{ $vp_port := index $vp_data 0 }}
-			{{ $vp_path := "" }}
-			{{ $vp_dest := "" }}
-			{{ $upstream := "" }}
-			{{ if (ge (len $vp_data) 2) }}
-				{{ $vp_path = index $vp_data 1 }}
-				{{ if (ge (len $vp_data) 3) }}
-					{{ $vp_dest = index $vp_data 2 }}
-				{{ end }}
-			{{ end }}
-			{{ if (ne $vp_path "") }}
-				{{ $sum := sha1 $vp_path }}
-				{{ $upstream = printf "%s-%s-%s" $upstream_name $sum $vp_port }}
-			{{ else }}
-				{{ $upstream = printf "%s-%s" $upstream_name $vp_port }}
-			{{ end }}
-			{{ if (or (eq $vp_path "") (eq $vp_path "/")) }}
-				{{ $needs_default_root_response = "false" }}
-			{{ end }}
-			{{/* Get the VIRTUAL_PROTO defined by containers w/ the same vhost-vpath, falling back to "http" */}}
-			{{ $proto := trim (or (first (groupByKeys $containers "Env.VIRTUAL_PROTO")) "http") }}
-
-			{{/* Get the NETWORK_ACCESS defined by containers w/ the same vhost, falling back to "external" */}}
-			{{ $network_tag := or (first (groupByKeys $containers "Env.NETWORK_ACCESS")) "external" }}
-			{{ template "location" (dict "Path" $vp_path "Proto" $proto "Upstream" $upstream "Host" $host "VhostRoot" $vhost_root "Dest" $vp_dest "NetworkTag" $network_tag) }}
-		{{ end }}
 		{{ range $path, $containers := $paths }}
 			{{/* Get the VIRTUAL_PROTO defined by containers w/ the same vhost-vpath, falling back to "http" */}}
 			{{ $proto := trim (or (first (groupByKeys $containers "Env.VIRTUAL_PROTO")) "http") }}
@@ -538,12 +525,43 @@ server {
 			{{ $upstream := printf "%s-%s" $upstream_name $sum }}
 			{{ $dest := (or (first (groupByKeys $containers "Env.VIRTUAL_DEST")) "") }}
 			{{ template "location" (dict "Path" $path "Proto" $proto "Upstream" $upstream "Host" $host "VhostRoot" $vhost_root "Dest" $dest "NetworkTag" $network_tag) }}
+			{{ if (eq $path "/") }}
+				{{ $needs_default_root_response = "false" }}
+			{{ end }}
 		{{ end }}
-		{{ if (and (not (contains $paths "/")) (eq $needs_default_root_response "true")) }}
+	{{ end }}
+	{{ range $vp_spec, $containers := $virtualPorts }}
+		{{ $vp_data := split $vp_spec ":" }}
+		{{ $vp_port := index $vp_data 0 }}
+		{{ $vp_path := "" }}
+		{{ $vp_dest := "" }}
+		{{ $upstream := "" }}
+		{{ if (ge (len $vp_data) 2) }}
+			{{ $vp_path = index $vp_data 1 }}
+			{{ if (ge (len $vp_data) 3) }}
+				{{ $vp_dest = index $vp_data 2 }}
+			{{ end }}
+		{{ end }}
+		{{ if (ne $vp_path "") }}
+			{{ $sum := sha1 $vp_path }}
+			{{ $upstream = printf "%s-%s-%s" $upstream_name $sum $vp_port }}
+		{{ else }}
+			{{ $upstream = printf "%s-%s" $upstream_name $vp_port }}
+		{{ end }}
+		{{ if (or (eq $vp_path "") (eq $vp_path "/")) }}
+			{{ $needs_default_root_response = "false" }}
+		{{ end }}
+		{{/* Get the VIRTUAL_PROTO defined by containers w/ the same vhost-vpath, falling back to "http" */}}
+		{{ $proto := trim (or (first (groupByKeys $containers "Env.VIRTUAL_PROTO")) "http") }}
+
+		{{/* Get the NETWORK_ACCESS defined by containers w/ the same vhost, falling back to "external" */}}
+		{{ $network_tag := or (first (groupByKeys $containers "Env.NETWORK_ACCESS")) "external" }}
+		{{ template "location" (dict "Path" $vp_path "Proto" $proto "Upstream" $upstream "Host" $host "VhostRoot" $vhost_root "Dest" $vp_dest "NetworkTag" $network_tag) }}
+	{{ end }}
+	{{ if (eq $needs_default_root_response "true") }}
 	location / {
 		return {{ $default_root_response }};
 	}
-		{{ end }}
 	{{ end }}
 }
 

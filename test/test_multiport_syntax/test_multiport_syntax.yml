@@ -9,7 +9,6 @@ web:
     WEB_PORTS: "80 81 82 83"
     VIRTUAL_HOST: "web.nginx-proxy.tld"
     VIRTUAL_PORT: "80,81:/81:/,82:/82:/port,83:~ ^/[8][3]"
-    #VIRTUAL_PORT: "80,81:/81:/,82:/82:/port"
 
 sut:
   image: nginxproxy/nginx-proxy:test
