@@ -16,10 +16,13 @@ services:
   web:
     image: web
     expose:
+      - "80"
       - "81"
+      - "82"
     environment:
-      WEB_PORTS: 81
+      WEB_PORTS: 80 81 82
       VIRTUAL_HOST: web1.nginx-proxy.local
+      VIRTUAL_PORT: 81
     networks:
       - net1
       - net2

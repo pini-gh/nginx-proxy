@@ -131,7 +131,7 @@ upstream {{ .Upstream }} {
         {{- $current_virtual_port := when (ne $virtual_port "") $virtual_port (coalesce $container.Env.VIRTUAL_PORT "") }}
         {{- $port := when (ne $current_virtual_port "") $current_virtual_port $defaultPort }}
         {{- $addr_obj := where $container.Addresses "Port" $port | first }}
-    #     Exposed ports:{{ range $container.Addresses }} {{ .Port }}/{{ .Proto }}{{ else }} (none){{ end }}
+    #     Exposed ports:{{ range (sortObjectsByKeysAsc $container.Addresses "Port") }} {{ .Port }}/{{ .Proto }}{{ else }} (none){{ end }}
     #     Default virtual port: {{ $defaultPort }}
     #     VIRTUAL_PORT: {{ $current_virtual_port }}
         {{- if and $addr_obj $addr_obj.HostPort }}
