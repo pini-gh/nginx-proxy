@@ -462,8 +462,8 @@ server {
          * vhostCert is actually a filename so remove any suffixes since they
          * are added later.
          */}}
-    {{- $vhostCert := trimSuffix ".crt" $vhostCert }}
-    {{- $vhostCert := trimSuffix ".key" $vhostCert }}
+    {{- $vhostCert = trimSuffix ".crt" $vhostCert }}
+    {{- $vhostCert = trimSuffix ".key" $vhostCert }}
 
     {{- /*
          * Use the cert specified on the container or fallback to the best vhost
