@@ -1,4 +1,4 @@
-FROM docker.io/nginxproxy/docker-gen:0.10.4-debian AS docker-gen
+FROM docker.io/nginxproxy/docker-gen:0.10.7-debian AS docker-gen
 
 FROM docker.io/nginxproxy/forego:0.17.1-debian AS forego
 
