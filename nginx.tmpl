@@ -581,7 +581,17 @@ server {
     {{- $http2 := parseBool (or (first (keys (groupByLabel $containers "com.github.nginx-proxy.nginx-proxy.http2.enable"))) $globals.Env.ENABLE_HTTP2 "true")}}
     {{- $http3 := parseBool (or (first (keys (groupByLabel $containers "com.github.nginx-proxy.nginx-proxy.http3.enable"))) $globals.Env.ENABLE_HTTP3 "false")}}
 
-    {{- $host_data := split $host ":" }}
+    {{- $host_data := list }}
+    {{- if (regexMatch "^\\[[0-9a-fA-F:]+\\][^:]*" $host) }}
+        {{- /*
+             * Raw IPv6 host must not be splitted
+             */}}
+        {{- $host_data = append $host_data (regexFind "^\\[[0-9a-fA-F:]+\\][^:]*" $host) }}
+        {{- $host = regexReplaceAll "^\\[[0-9a-fA-F:]+\\][^:]*" $host "" }}
+        {{- $host_data = concat $host_data (slice (split $host ":") 1) }}
+    {{- else }}
+        {{- $host_data = split $host ":" }}
+    {{- end }}
     {{- $host = index $host_data 0 }}
     {{- $host_has_dedicated_port := gt (len $host_data) 1 }}
     {{- $host_dedicated_port := when $host_has_dedicated_port (index $host_data (when $host_has_dedicated_port 1 0)) "" }}
