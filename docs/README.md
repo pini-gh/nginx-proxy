@@ -421,6 +421,8 @@ If you are running the container in a virtualized environment (Hyper-V, VirtualB
 
 [acme-companion](https://github.com/nginx-proxy/acme-companion) is a lightweight companion container for the nginx-proxy. It allows the automated creation/renewal of SSL certificates using the ACME protocol.
 
+By default nginx-proxy generates location blocks to handle ACME HTTP Challenge. To disable this behavior set `ACME_HTTP_CHALLENGE=false` at the nginx-proxy container level or at the app container one.
+
 ### Diffie-Hellman Groups
 
 [RFC7919 groups](https://datatracker.ietf.org/doc/html/rfc7919#appendix-A) with key lengths of 2048, 3072, and 4096 bits are [provided by `nginx-proxy`](https://github.com/nginx-proxy/nginx-proxy/dhparam). The ENV `DHPARAM_BITS` can be set to `2048` or `3072` to change from the default 4096-bit key. The DH key file will be located in the container at `/etc/nginx/dhparam/dhparam.pem`. Mounting a different `dhparam.pem` file at that location will override the RFC7919 key.
