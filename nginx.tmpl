@@ -32,7 +32,7 @@
 {{- $_ := set $config "enable_http2" ($globals.Env.ENABLE_HTTP2 | default "true") }}
 {{- $_ := set $config "enable_http3" ($globals.Env.ENABLE_HTTP3 | default "false") }}
 {{- $_ := set $config "enable_proxy_protocol" ($globals.Env.ENABLE_PROXY_PROTOCOL | default "false" | parseBool) }}
-{{- $_ := set $config "enable_http_on_missing_cert" ($globals.Env.ENABLE_HTTP_ON_MISSING_CERT | default "true") }}
+{{- $_ := set $config "enable_http_on_missing_cert" ($globals.Env.ENABLE_HTTP_ON_MISSING_CERT | default "false") }}
 {{- $_ := set $config "https_method" ($globals.Env.HTTPS_METHOD | default "redirect") }}
 {{- $_ := set $config "non_get_redirect" ($globals.Env.NON_GET_REDIRECT | default "301") }}
 {{- $_ := set $config "default_host" $globals.Env.DEFAULT_HOST }}

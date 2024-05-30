@@ -40,6 +40,7 @@ services:
       - "80"
     environment:
       WEB_PORTS: "80"
+      HTTPS_METHOD: noredirect
       VIRTUAL_HOST: whoami2.nginx-proxy.tld
     networks:
       - proxy

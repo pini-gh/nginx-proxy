@@ -9,6 +9,7 @@ services:
       - "81"
     environment:
       WEB_PORTS: "81"
+      HTTPS_METHOD: noredirect
       VIRTUAL_HOST: "web1.nginx-proxy.tld"
 
   web2:
@@ -17,6 +18,7 @@ services:
       - "82"
     environment:
       WEB_PORTS: "82"
+      HTTPS_METHOD: redirect
       VIRTUAL_HOST: "web2.nginx-proxy.tld"
       ACME_HTTP_CHALLENGE_LOCATION: "false"
 

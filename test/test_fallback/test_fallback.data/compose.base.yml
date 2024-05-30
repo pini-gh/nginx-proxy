@@ -2,6 +2,8 @@ services:
   nginx-proxy:
     image: nginxproxy/nginx-proxy:test
     container_name: nginx-proxy
+    environment:
+      HTTPS_METHOD: redirect
     volumes:
       - /var/run/docker.sock:/tmp/docker.sock:ro
     ports:

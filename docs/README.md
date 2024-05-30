@@ -663,8 +663,7 @@ By default, [HTTP Strict Transport Security (HSTS)](https://developer.mozilla.or
 If no matching certificate is found for a given virtual host, nginx-proxy will configure nginx to use the default certificate (`default.crt` with `default.key`).
 
 If the default certificate is also missing, nginx-proxy will:
-
-- force enable HTTP; i.e. `HTTPS_METHOD` will switch to `noredirect` if it was set to `nohttp` or `redirect`. If this switch to HTTP is not wanted set `ENABLE_HTTP_ON_MISSING_CERT=false` (default is `true`).
+- not force enable HTTP. If you want HTTP force enabled in this case (i.e. `HTTPS_METHOD` will switch to `noredirect` if it was set to `nohttp` or `redirect`) set `ENABLE_HTTP_ON_MISSING_CERT=true` (default is `false`).
 - configure nginx to reject the SSL handshake for this vhost. Client browsers will render a TLS error page. As of October 2024, web browsers display the following error messages:
 
 #### Chrome:

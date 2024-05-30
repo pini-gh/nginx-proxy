@@ -1,6 +1,7 @@
 services:
-#  nginx-proxy:
-#    environment:
+  nginx-proxy:
+    environment:
+      HTTPS_METHOD: noredirect
 #      ENABLE_HTTP3: "false"    #Disabled by default
 
   http3-vhost-enabled:
