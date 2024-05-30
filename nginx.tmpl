@@ -28,7 +28,7 @@
 {{- $_ := set $config "acme_http_challenge" ($globals.Env.ACME_HTTP_CHALLENGE_LOCATION | default "true") }}
 {{- $_ := set $config "enable_http2" ($globals.Env.ENABLE_HTTP2 | default "true") }}
 {{- $_ := set $config "enable_http3" ($globals.Env.ENABLE_HTTP3 | default "false") }}
-{{- $_ := set $config "enable_http_on_missing_cert" ($globals.Env.ENABLE_HTTP_ON_MISSING_CERT | default "true") }}
+{{- $_ := set $config "enable_http_on_missing_cert" ($globals.Env.ENABLE_HTTP_ON_MISSING_CERT | default "false") }}
 {{- $_ := set $config "https_method" ($globals.Env.HTTPS_METHOD | default "redirect") }}
 {{- $_ := set $config "default_host" $globals.Env.DEFAULT_HOST }}
 {{- $_ := set $config "resolvers" $globals.Env.RESOLVERS }}

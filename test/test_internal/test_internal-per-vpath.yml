@@ -24,6 +24,8 @@ services:
 
   sut:
     image: nginxproxy/nginx-proxy:test
+    environment:
+      HTTPS_METHOD: nohttps
     volumes:
       - /var/run/docker.sock:/tmp/docker.sock:ro
       - ./network_internal.conf:/etc/nginx/network_internal.conf:ro
