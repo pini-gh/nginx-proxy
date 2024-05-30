@@ -1,5 +1,7 @@
 services:
   nginx-proxy:
+    environment:
+      HTTPS_METHOD: redirect
     volumes:
       - /var/run/docker.sock:/tmp/docker.sock:ro
       - ${PYTEST_MODULE_PATH}/certs:/etc/nginx/certs:ro
