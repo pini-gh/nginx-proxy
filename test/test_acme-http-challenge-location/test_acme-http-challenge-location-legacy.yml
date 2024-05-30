@@ -1,6 +1,7 @@
 services:
   nginx-proxy:
     environment:
+      HTTPS_METHOD: redirect
       ACME_HTTP_CHALLENGE_LOCATION: "legacy"
 
   web1:

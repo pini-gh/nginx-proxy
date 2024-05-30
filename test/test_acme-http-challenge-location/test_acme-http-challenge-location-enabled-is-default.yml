@@ -1,4 +1,8 @@
 services:
+  nginx-proxy:
+    environment:
+      HTTPS_METHOD: redirect
+
   web1:
     image: web
     expose:
