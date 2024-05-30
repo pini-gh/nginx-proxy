@@ -38,6 +38,7 @@ services:
   sut:
     image: nginxproxy/nginx-proxy:test
     environment:
+      HTTPS_METHOD: nohttps
       ENABLE_IPV6: "true"
     volumes:
       - /var/run/docker.sock:/tmp/docker.sock:ro

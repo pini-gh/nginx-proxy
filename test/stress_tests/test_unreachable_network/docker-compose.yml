@@ -10,6 +10,8 @@ services:
     networks:
       - netA
     image: nginxproxy/nginx-proxy:test
+    environment:
+      HTTPS_METHOD: nohttps
     volumes:
       - /var/run/docker.sock:/tmp/docker.sock:ro
 
