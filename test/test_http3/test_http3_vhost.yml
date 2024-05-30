@@ -31,5 +31,7 @@ services:
 
   sut:
     image: nginxproxy/nginx-proxy:test
+    environment:
+      HTTPS_METHOD: noredirect
     volumes:
       - /var/run/docker.sock:/tmp/docker.sock:ro

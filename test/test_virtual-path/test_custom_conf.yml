@@ -41,6 +41,7 @@ services:
   sut:
     image: nginxproxy/nginx-proxy:test
     environment:
+      HTTPS_METHOD: nohttps
       DEFAULT_ROOT: 418
     volumes:
       - /var/run/docker.sock:/tmp/docker.sock:ro
