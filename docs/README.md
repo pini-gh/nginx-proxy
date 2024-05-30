@@ -422,8 +422,8 @@ If you are running the container in a virtualized environment (Hyper-V, VirtualB
 [acme-companion](https://github.com/nginx-proxy/acme-companion) is a lightweight companion container for the nginx-proxy. It allows the automated creation/renewal of SSL certificates using the ACME protocol.
 
 By default nginx-proxy generates location blocks to handle ACME HTTP Challenge, excepted when `HTTPS_METHOD=noredirect` or there is no certificate for the domain. Ths behavior can be changed with environment variable `ACME_HTTP_CHALLENGE_LOCATION`. It accepts these values:
-* `legacy`: default value; current default behavior
-* `true`: handle ACME HTTP Challenge in all cases
+* `legacy`: current upstream (nginx-proxy/nginx-proxy) default behavior
+* `true`: (default) handle ACME HTTP Challenge in all cases
 * `false`: do not handle ACME HTTP Chalenge at all.
 
 ### Diffie-Hellman Groups
