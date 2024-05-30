@@ -1,6 +1,7 @@
 services:
   nginx-proxy:
     environment:
+      HTTPS_METHOD: noredirect
       ENABLE_HTTP3: "true"
 
   http3-global-enabled:
