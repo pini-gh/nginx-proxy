@@ -15,4 +15,4 @@ services:
     volumes:
       - /var/run/docker.sock:/tmp/docker.sock:ro
     environment:
-      DISABLE_ACCESS_LOGS: true
+      DISABLE_ACCESS_LOGS: "true"
