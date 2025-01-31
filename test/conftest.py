@@ -310,6 +310,9 @@ def get_nginx_conf_from_container(container: Container) -> bytes:
         return conffile.read()
 
 
+class DockerComposeException(Exception):
+    pass
+
 def __prepare_and_execute_compose_cmd(compose_files: List[str], project_name: str, cmd: str):
     """
     Prepare and execute the Docker Compose command with the provided compose files and project name.
@@ -325,7 +328,7 @@ def __prepare_and_execute_compose_cmd(compose_files: List[str], project_name: st
     try:
         subprocess.check_output(shlex.split(compose_cmd.getvalue()), stderr=subprocess.STDOUT)
     except subprocess.CalledProcessError as e:
-        pytest.fail(f"Error while running '{compose_cmd.getvalue()}':\n{e.output}", pytrace=False)
+        raise DockerComposeException(f"Error while running '{compose_cmd.getvalue()}':\n{e.output}")
 
 
 def docker_compose_up(compose_files: List[str], project_name: str):
@@ -334,7 +337,14 @@ def docker_compose_up(compose_files: List[str], project_name: str):
     """
     if compose_files is None or len(compose_files) == 0:
         pytest.fail(f"No compose file passed to docker_compose_up", pytrace=False)
-    __prepare_and_execute_compose_cmd(compose_files, project_name, cmd="up --detach")
+    try:
+        __prepare_and_execute_compose_cmd(compose_files, project_name, cmd="up --detach")
+    except DockerComposeException as e:
+        try:
+            docker_compose_down(compose_files, project_name)
+        except:
+            pass
+        pytest.fail(str(e), pytrace=False)
 
 
 def docker_compose_down(compose_files: List[str], project_name: str):
