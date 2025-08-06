@@ -58,7 +58,7 @@ services:
       - "85"
     environment:
       WEB_PORTS: "85"
-      VIRTUAL_HOST: ~^regex.*\.nginx-proxy\.tld$
+      VIRTUAL_HOST: ~^regex.*\.nginx-proxy\.tld$$
       CERT_NAME: nginx-proxy.tld
 
   nginx-proxy:
